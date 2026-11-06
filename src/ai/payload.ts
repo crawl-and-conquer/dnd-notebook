@@ -1,5 +1,5 @@
 import { addDays, format, subDays } from "date-fns";
-import type { TabConfig } from "../model/config";
+import type { CharacterConfig } from "../model/config";
 import type { Element, Page } from "../model/page";
 import { readingOrder } from "../model/readingOrder";
 
@@ -7,7 +7,7 @@ import { readingOrder } from "../model/readingOrder";
 export type Ref = { tabId: string; pageId: string; elementId?: string; itemId?: string };
 
 export type CatchUpInput = {
-  tabs: { tab: TabConfig; pages: Page[] }[];
+  tabs: { tab: CharacterConfig; pages: Page[] }[];
   now: Date;
   lookAheadDays: number;
   staleDays: number;

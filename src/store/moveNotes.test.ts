@@ -2,50 +2,47 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { backend } from "../storage/backend";
 import { useNotebook } from "./notebook";
 
-// Runs against the in-memory backend; the Rust copy-and-verify step has its own tests.
+// Tests backend.moveNotebook (the TypeScript in-memory side); the Rust copy-and-verify
+// step has its own tests in move_notes.rs.
 
 const OLD = "C:/Demo/Move/Old";
 const NEW = "C:/Demo/Move/New";
 const BUSY = "C:/Demo/Move/Busy";
 const state = () => useNotebook.getState();
-const tabId = () => state().config.tabs[0].id;
-const tab = () => {
-  const t = state().tabs[tabId()];
-  if (t?.status !== "ok") throw new Error("tab not loaded");
-  return t;
-};
 
-describe("move existing notes", () => {
+
+describe("move notebook (backend)", () => {
   beforeAll(async () => {
-    const r = await backend.prepareClientFolder(OLD, "Move", "#8FB8FF", false);
-    await state().addClient({
+    const r = await backend.prepareCharacterFolder(OLD, "Move", "#46562f", false);
+    await state().addCharacter({
       name: "Move",
-      colour: "#8FB8FF",
+      cover: "#46562f",
       folder: OLD,
-      notesPath: r.notesPath,
+      notebookPath: r.notebookPath,
     });
     await state().newPage();
-    // An edit still waiting for autosave must be saved before the copy is made.
     state().updatePage((p) => ({ ...p, title: "Moved page" }));
+    await state().flushSaves();
   });
 
-  it("refuses a destination that already has notes, and changes nothing", async () => {
-    await backend.writeTextAtomic(`${BUSY}/notes/pages/x.page.json`, "{}");
-    await expect(state().moveNotes(tabId(), BUSY)).rejects.toThrow(/not empty/);
-    expect(state().config.tabs[0].folder).toBe(OLD);
-    expect(tab().notesPath).toBe(`${OLD}/notes`);
-    expect(await backend.listPageFiles(`${OLD}/notes`)).toHaveLength(1);
+  it("refuses a destination that already has a notebook", async () => {
+    // Create a file in the busy destination's notebook path.
+    await backend.writeTextAtomic(`${BUSY}/notebook/pages/sessions/x.page.json`, "{}");
+    await expect(
+      backend.moveNotebook(`${OLD}/notebook`, BUSY),
+    ).rejects.toThrow(/not empty/);
   });
 
-  it("moves the notes, points the tab at the new folder and says so", async () => {
-    await state().moveNotes(tabId(), NEW);
-    expect(state().config.tabs[0].folder).toBe(NEW);
-    expect(tab().notesPath).toBe(`${NEW}/notes`);
-    expect(tab().pages.map((p) => p.page.title)).toEqual(["Moved page"]);
-    const moved = await backend.listPageFiles(`${NEW}/notes`);
-    expect(moved).toHaveLength(1);
-    expect(moved[0]).toMatch(/-moved-page\.page\.json$/);
-    expect(await backend.pathExists(`${OLD}/notes`)).toBe(false);
-    expect(state().notice).toMatch(/Moved and checked .* Recycle Bin/);
+  it("moves the notebook files and updates the path", async () => {
+    const result = await backend.moveNotebook(`${OLD}/notebook`, NEW);
+    expect(result.notebookPath).toBe(`${NEW}/notebook`);
+    expect(result.files).toBeGreaterThan(0);
+    expect(result.oldLeftBehind).toBeNull();
+    // Files are now under the new path.
+    const files = await backend.listSectionPageFiles(`${NEW}/notebook`, "sessions");
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/-moved-page\.page\.json$/);
+    // Old path is gone.
+    expect(await backend.pathExists(`${OLD}/notebook`)).toBe(false);
   });
 });

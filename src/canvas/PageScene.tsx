@@ -90,14 +90,12 @@ export function PageTitle({ page }: { page: Page }) {
 /** A whole page, read-only: what exports and snapshots draw. */
 export function PageScene({
   page,
-  notesPath,
+  notebookPath,
   grid,
-  today,
 }: {
   page: Page;
-  notesPath: string;
+  notebookPath: string;
   grid: number;
-  today: string;
 }) {
   const ordered = useMemo(() => drawOrder(page.elements), [page.elements]);
   return (
@@ -108,10 +106,9 @@ export function PageScene({
         <ElementNode
           key={el.id}
           el={el}
-          notesPath={notesPath}
+          notebookPath={notebookPath}
           draggable={false}
           hidden={false}
-          today={today}
         />
       ))}
     </>

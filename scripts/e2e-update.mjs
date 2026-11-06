@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 import { checker, sleep } from "./e2e-lib.mjs";
 
 const { check, finish } = checker();
-const exe = path.join(process.env.LOCALAPPDATA, "DnD Notebook", "dnd-notebook.exe");
+const exe = path.join(process.env.LOCALAPPDATA, "Adventurer's Notebook", "dnd-notebook.exe");
 const PORT = 9334;
 const versionOf = (file) =>
   execFileSync(

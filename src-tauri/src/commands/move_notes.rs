@@ -5,7 +5,7 @@
 //! always be undone by hand. If anything fails before that point the original is untouched
 //! and the partial copy (which this command created) is removed.
 
-use crate::commands::fs::is_our_notebook;
+use crate::commands::fs::{is_our_notebook, is_our_character_notebook};
 use crate::commands::watch::WatchState;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -175,9 +175,79 @@ pub fn move_notes(
     from_notes: String,
     to_folder: String,
 ) -> Result<MoveResult, String> {
-    // A watched folder cannot be moved on Windows; the app watches the new one once it loads.
     watch.stop(&from_notes);
     move_notes_with(Path::new(&from_notes), Path::new(&to_folder), |old| {
+        trash::delete(old).map_err(|e| e.to_string())
+    })
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveNotebookResult {
+    pub notebook_path: String,
+    pub files: usize,
+    pub old_left_behind: Option<String>,
+}
+
+pub fn move_notebook_with(
+    from_notebook: &Path,
+    to_folder: &Path,
+    remove_old: impl Fn(&Path) -> Result<(), String>,
+) -> Result<MoveNotebookResult, String> {
+    if !is_our_character_notebook(from_notebook) {
+        return Err(format!(
+            "{} is not a notebook folder made by this app, so it will not be moved.",
+            from_notebook.display()
+        ));
+    }
+    if !to_folder.is_dir() {
+        return Err(format!("Folder not found: {}", to_folder.display()));
+    }
+    let to_notebook = to_folder.join("notebook");
+    if overlaps(from_notebook, to_folder) {
+        return Err("Choose a folder outside the current notebook folder.".into());
+    }
+    let existed = to_notebook.exists();
+    if existed && fs::read_dir(&to_notebook).map_err(err)?.next().is_some() {
+        return Err(format!(
+            "{} already exists and is not empty. Choose another folder.",
+            to_notebook.display()
+        ));
+    }
+
+    let files = list_files(from_notebook)?;
+    let copied = copy_tree(from_notebook, &to_notebook, &files)
+        .and_then(|_| verify(from_notebook, &to_notebook, &files));
+    if let Err(e) = copied {
+        if existed {
+            for entry in fs::read_dir(&to_notebook).into_iter().flatten().flatten() {
+                let p = entry.path();
+                let _ = if p.is_dir() { fs::remove_dir_all(&p) } else { fs::remove_file(&p) };
+            }
+        } else {
+            let _ = fs::remove_dir_all(&to_notebook);
+        }
+        return Err(format!(
+            "The notebook was not moved: {e} The original folder is untouched."
+        ));
+    }
+
+    let old_left_behind = remove_old(from_notebook).err();
+    Ok(MoveNotebookResult {
+        notebook_path: to_notebook.to_string_lossy().to_string(),
+        files: files.len(),
+        old_left_behind,
+    })
+}
+
+#[tauri::command]
+pub fn move_notebook(
+    watch: State<'_, WatchState>,
+    from_notebook: String,
+    to_folder: String,
+) -> Result<MoveNotebookResult, String> {
+    watch.stop(&from_notebook);
+    move_notebook_with(Path::new(&from_notebook), Path::new(&to_folder), |old| {
         trash::delete(old).map_err(|e| e.to_string())
     })
 }

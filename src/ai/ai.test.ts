@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TabConfig } from "../model/config";
+import type { CharacterConfig } from "../model/config";
 import type { Element, Page } from "../model/page";
 import { readingOrder } from "../model/readingOrder";
 import { buildCatchUpContext } from "./payload";
@@ -31,14 +31,15 @@ const page = (id: string, title: string, updated: string, elements: Element[]): 
   schemaVersion: 1,
   id,
   title,
+  section: "sessions",
   createdAt: T("2026-09-01"),
   updatedAt: T(updated),
   elements,
 });
-const tab = (id: string, name: string, excludeFromAi = false): TabConfig => ({
+const tab = (id: string, name: string, excludeFromAi = false): CharacterConfig => ({
   id,
   name,
-  colour: "#fff",
+  cover: "#fff",
   folder: `C:/${name}`,
   order: 0,
   archived: false,

@@ -16,8 +16,8 @@ export type Fonts = { regular: PDFFont; bold: PDFFont };
 export async function newPdf(title: string): Promise<{ doc: PDFDocument; fonts: Fonts }> {
   const doc = await PDFDocument.create();
   doc.setTitle(title);
-  doc.setCreator("DnD Notebook");
-  doc.setProducer("DnD Notebook");
+  doc.setCreator("Adventurer's Notebook");
+  doc.setProducer("Adventurer's Notebook");
   const fonts = {
     regular: await doc.embedFont(StandardFonts.Helvetica),
     bold: await doc.embedFont(StandardFonts.HelveticaBold),

@@ -20,6 +20,7 @@ const page: Page = {
   schemaVersion: 1,
   id: "p1",
   title: "Faceted navigation audit",
+  section: "sessions",
   createdAt: T,
   updatedAt: "2026-11-04T10:00:00.000Z",
   elements: [
@@ -182,9 +183,9 @@ const PNG = Uint8Array.from(
 const colours = { background: "#0C1332", text: "#E9EDFD", muted: "#B9C6E6" };
 
 describe("PDF export", () => {
-  it("fits the 1600x1100 sheet inside landscape A4 with room for header and footer", () => {
+  it("fits the 570x720 sheet inside portrait A4 with room for header and footer", () => {
     const b = imageBox();
-    expect(b.w / b.h).toBeCloseTo(1600 / 1100, 5);
+    expect(b.w / b.h).toBeCloseTo(570 / 720, 5);
     expect(b.x).toBeGreaterThanOrEqual(24);
     expect(b.y).toBeGreaterThanOrEqual(26);
     expect(b.y + b.h).toBeLessThanOrEqual(A4_LANDSCAPE[1] - 30);

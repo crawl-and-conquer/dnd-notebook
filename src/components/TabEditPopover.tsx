@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { COVER_COLOURS } from "../model/character";
 import { useNotebook } from "../store/notebook";
-import { ColourPicker } from "./ColourPicker";
+import { CoverPicker } from "./CoverPicker";
 
-/** Rename a tab and change its colour, beside the tab it belongs to. */
+/** Rename a character and change its cover colour, beside the shelf spine it belongs to. */
 export function TabEditPopover({
   tabId,
   anchor,
@@ -14,9 +15,9 @@ export function TabEditPopover({
   focus: "name" | "colour";
   onClose(): void;
 }) {
-  const tab = useNotebook((s) => s.config.tabs.find((t) => t.id === tabId));
-  const [name, setName] = useState(tab?.name ?? "");
-  const [colour, setColour] = useState(tab?.colour ?? "#01C6A3");
+  const char = useNotebook((s) => s.config.characters.find((c) => c.id === tabId));
+  const [name, setName] = useState(char?.name ?? "");
+  const [cover, setCover] = useState(char?.cover ?? COVER_COLOURS[0].value);
   const ref = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -46,13 +47,13 @@ export function TabEditPopover({
     };
   }, [onClose]);
 
-  if (!tab) return null;
+  if (!char) return null;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     const s = useNotebook.getState();
-    await s.renameTab(tabId, name);
-    await s.setTabColour(tabId, colour);
+    await s.renameCharacter(tabId, name);
+    await s.setCharacterCover(tabId, cover);
     onClose();
   };
 
@@ -62,7 +63,7 @@ export function TabEditPopover({
       ref={ref}
       className="tab-edit"
       role="dialog"
-      aria-label={`Edit ${tab.name}`}
+      aria-label={`Edit ${char.name}`}
       onSubmit={(e) => void save(e)}
       style={{
         width,
@@ -70,14 +71,14 @@ export function TabEditPopover({
         top: Math.max(16, Math.min(anchor.top, window.innerHeight - 260)),
       }}
     >
-      <h3>Edit tab</h3>
+      <h3>Edit character</h3>
       <label className="field">
         Name
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <div className="field">
-        <span id="tab-edit-colour">Colour</span>
-        <ColourPicker value={colour} onChange={setColour} labelledBy="tab-edit-colour" />
+        <span id="tab-edit-colour">Cover colour</span>
+        <CoverPicker value={cover} onChange={setCover} labelledBy="tab-edit-colour" />
       </div>
       <div className="form-actions">
         <button type="button" className="pill ghost" onClick={onClose}>

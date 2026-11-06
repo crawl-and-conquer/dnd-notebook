@@ -86,8 +86,8 @@ pub fn export_write_text(root: String, rel: String, text: String) -> Result<(), 
 
 /// Copies a pasted image from a notes folder. Skips it if already copied.
 #[tauri::command]
-pub fn export_copy_asset(notes_path: String, asset: String, root: String, rel: String) -> Result<(), String> {
-    let from = asset_path(Path::new(&notes_path), &asset)?;
+pub fn export_copy_asset(notebook_path: String, asset: String, root: String, rel: String) -> Result<(), String> {
+    let from = asset_path(Path::new(&notebook_path), &asset)?;
     let to = target(&root, &rel)?;
     if to.exists() {
         return Ok(());

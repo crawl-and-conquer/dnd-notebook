@@ -45,16 +45,16 @@ pub fn save_png(notes: &Path, bytes: &[u8]) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn save_asset(notes_path: String, data_base64: String) -> Result<String, String> {
+pub fn save_asset(notebook_path: String, data_base64: String) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.as_bytes())
         .map_err(|e| e.to_string())?;
-    save_png(Path::new(&notes_path), &bytes)
+    save_png(Path::new(&notebook_path), &bytes)
 }
 
 #[tauri::command]
-pub fn read_asset(notes_path: String, rel: String) -> Result<tauri::ipc::Response, String> {
-    let path = asset_path(Path::new(&notes_path), &rel)?;
+pub fn read_asset(notebook_path: String, rel: String) -> Result<tauri::ipc::Response, String> {
+    let path = asset_path(Path::new(&notebook_path), &rel)?;
     let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(tauri::ipc::Response::new(bytes))
 }

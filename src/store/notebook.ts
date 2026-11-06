@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import { defaultConfig, parseConfig, type AppConfig, type TabConfig } from "../model/config";
+import {
+  defaultConfig,
+  parseConfig,
+  type AppConfig,
+  type CharacterConfig,
+} from "../model/config";
 import {
   createPage,
   newId,
@@ -10,38 +15,45 @@ import {
   type Page,
 } from "../model/page";
 import {
+  createCharacter,
+  parseCharacter,
+  type Character,
+} from "../model/character";
+import {
   emptyHistory,
   record,
   redo as redoStep,
   undo as undoStep,
   type History,
 } from "../canvas/history";
-import { duplicate } from "../canvas/elements";
-import { applyTabOrder, moveToSlot } from "./tabOrder";
 import { backend } from "../storage/backend";
+import { pagePath } from "../storage/paths";
 import {
   forgetDiskText,
   knownDiskText,
-  loadTab,
+  loadCharacter as loadCharacterFromDisk,
   rememberDiskText,
   savePage,
   type LoadedPage,
 } from "../storage/notebook";
-import { pagePath } from "../storage/paths";
 
 export const AUTOSAVE_DELAY_MS = 800;
 
-export type TabState =
+/** State of one loaded character. */
+export type CharacterState =
   | { status: "loading" }
-  | { status: "missing"; notesPath: string }
+  | { status: "missing"; notebookPath: string }
   | {
       status: "ok";
-      notesPath: string;
-      pages: LoadedPage[];
+      notebookPath: string;
+      character: Character;
+      /** Pages per section id, in file/created order. */
+      sectionPages: Record<string, LoadedPage[]>;
       errors: string[];
     };
 
-export type View = { kind: "tab"; tabId: string } | { kind: "empty" };
+export type SpreadPos = { characterId: string; sectionId: string; spreadIndex: number };
+export type View = SpreadPos | { kind: "empty" };
 
 export type SaveState =
   | { kind: "saved"; at?: Date }
@@ -53,71 +65,53 @@ export type SaveState =
 type NotebookStore = {
   ready: boolean;
   config: AppConfig;
-  tabs: Record<string, TabState>;
-  currentPage: Record<string, string>;
+  characters: Record<string, CharacterState>;
   view: View;
   save: SaveState;
   settingsOpen: boolean;
+  pageListOpen: boolean;
   notice: string | null;
+  flash: { elementId: string; nonce: number } | null;
+  historyTick: number;
 
   init(): Promise<void>;
   updateConfig(mutate: (c: AppConfig) => AppConfig): Promise<void>;
-  addClient(input: {
+  addCharacter(input: {
     name: string;
-    colour: string;
+    cover: string;
     folder: string;
-    notesPath: string;
+    notebookPath: string;
   }): Promise<void>;
-  changeFolder(tabId: string, folder: string, notesPath: string): Promise<void>;
-  /**
-   * "Move existing notes": saves pending edits, copies the tab's notes folder into
-   * `<folder>/notes`, verifies it, bins the old copy and points the tab at the new folder.
-   * Throws (with the original untouched) if the move cannot be done safely.
-   */
-  moveNotes(tabId: string, folder: string): Promise<void>;
-  /** Renames a tab (and its `notebook.json`). Blank names are ignored. */
-  renameTab(tabId: string, name: string): Promise<void>;
-  setTabColour(tabId: string, colour: string): Promise<void>;
-  /** Hides a tab from the side; its files are untouched. Opens a neighbour if it was open. */
-  archiveTab(tabId: string): Promise<void>;
-  /** Brings an archived tab back at the end of the list and opens it. */
-  restoreTab(tabId: string): Promise<void>;
-  /** Moves a visible tab to an insertion slot (0 = top, n = bottom). */
-  moveTab(tabId: string, slot: number): Promise<void>;
-  reloadTab(tabId: string): Promise<void>;
-  openTab(tabId: string): void;
+  renameCharacter(characterId: string, name: string): Promise<void>;
+  setCharacterCover(characterId: string, cover: string): Promise<void>;
+  archiveCharacter(characterId: string): Promise<void>;
+  restoreCharacter(characterId: string): Promise<void>;
+  moveCharacter(characterId: string, slot: number): Promise<void>;
+  reloadCharacter(characterId: string): Promise<void>;
+  openCharacter(characterId: string): void;
+  openSection(characterId: string, sectionId: string): void;
   setSettingsOpen(open: boolean): void;
-  dismissNotice(): void;
-  newPage(): Promise<void>;
-  /** Copies a page (fresh ids, today's date) and opens the copy. */
-  duplicatePage(tabId: string, pageId: string): Promise<void>;
-  /** Moves a page's file to the Recycle Bin and opens a neighbouring page. */
-  deletePage(tabId: string, pageId: string): Promise<boolean>;
-  /** Sets a page's title; the autosave renames its file to match. */
-  renamePage(tabId: string, pageId: string, title: string): void;
-  pageListOpen: boolean;
   setPageListOpen(open: boolean): void;
-  goToPage(delta: number): void;
+  dismissNotice(): void;
+
+  /** Navigate to a spread by absolute index in the current section. */
+  goToSpread(index: number): void;
+  /** Move by delta spreads (+1 next, -1 prev). */
+  goToSpreadDelta(delta: number): void;
+
+  newPage(): Promise<void>;
+  duplicatePage(characterId: string, sectionId: string, pageId: string): Promise<void>;
+  deletePage(characterId: string, sectionId: string, pageId: string): Promise<boolean>;
+  renamePage(characterId: string, sectionId: string, pageId: string, title: string): void;
+
   updatePage(mutate: (p: Page) => Page): void;
-  /** Changes any loaded page (not just the current one) and autosaves it. */
-  updatePageIn(tabId: string, pageId: string, mutate: (p: Page) => Page): void;
-  /** Opens a page, optionally centring on and flashing one element. */
-  openPageAt(tabId: string, pageId: string, elementId?: string): void;
-  flash: { elementId: string; nonce: number } | null;
-  clearFlash(): void;
-  /** Changes the current page's elements as one undoable step. */
+  updatePageIn(characterId: string, sectionId: string, pageId: string, mutate: (p: Page) => Page): void;
   editElements(mutate: (els: Element[]) => Element[]): void;
   undo(): void;
   redo(): void;
-  /** Bumped whenever undo/redo availability may have changed. */
-  historyTick: number;
   flushSaves(): Promise<void>;
-  /**
-   * Applies page files changed outside the app (from the folder watcher). Pages without
-   * unsaved edits are reloaded, added or removed; pages with unsaved edits keep the in-app
-   * version and show a notice.
-   */
-  applyOutsideChanges(notesPath: string, fileNames: string[], rescan?: boolean): Promise<void>;
+  applyOutsideChanges(notebookPath: string, fileNames: string[], rescan?: boolean): Promise<void>;
+  clearFlash(): void;
 };
 
 const histories = new Map<string, History<Element[]>>();
@@ -130,34 +124,45 @@ export function historyFor(pageId: string | undefined): { canUndo: boolean; canR
 const sameElements = (a: Element[], b: Element[]) =>
   a.length === b.length && a.every((el, i) => el === b[i]);
 
-export const visibleTabs = (c: AppConfig): TabConfig[] =>
-  c.tabs.filter((t) => !t.archived).sort((a, b) => a.order - b.order);
+export const visibleCharacters = (c: AppConfig): CharacterConfig[] =>
+  c.characters.filter((ch) => !ch.archived).sort((a, b) => a.order - b.order);
 
-export function currentPageOf(s: Pick<NotebookStore, "view" | "tabs" | "currentPage">): {
-  tabId: string;
-  loaded: LoadedPage;
-  index: number;
-  count: number;
-} | null {
-  if (s.view.kind !== "tab") return null;
-  const tabId = s.view.tabId;
-  const t = s.tabs[tabId];
-  if (!t || t.status !== "ok" || t.pages.length === 0) return null;
-  const id = s.currentPage[tabId];
-  let index = t.pages.findIndex((p) => p.page.id === id);
-  if (index < 0) index = t.pages.length - 1;
-  return { tabId, loaded: t.pages[index], index, count: t.pages.length };
+/** Returns the two pages for the current spread, or just the left page if at the last odd page. */
+export function currentSpreadPages(
+  s: Pick<NotebookStore, "view" | "characters">,
+): { left: LoadedPage | null; right: LoadedPage | null; spreadIndex: number; spreadCount: number } | null {
+  if (!("characterId" in s.view)) return null;
+  const { characterId, sectionId, spreadIndex } = s.view;
+  const ch = s.characters[characterId];
+  if (!ch || ch.status !== "ok") return null;
+  const pages = ch.sectionPages[sectionId] ?? [];
+  const spreadCount = Math.ceil(pages.length / 2);
+  const leftIdx = spreadIndex * 2;
+  const left = pages[leftIdx] ?? null;
+  const right = pages[leftIdx + 1] ?? null;
+  return { left, right, spreadIndex, spreadCount };
 }
 
-// ----- autosave plumbing (module scope, outside React) -----
+/** The left page (or right if no left), for tools and element edits. */
+export function currentPageOf(
+  s: Pick<NotebookStore, "view" | "characters">,
+): { characterId: string; sectionId: string; loaded: LoadedPage; index: number; count: number } | null {
+  if (!("characterId" in s.view)) return null;
+  const { characterId, sectionId, spreadIndex } = s.view;
+  const ch = s.characters[characterId];
+  if (!ch || ch.status !== "ok") return null;
+  const pages = ch.sectionPages[sectionId] ?? [];
+  if (pages.length === 0) return null;
+  const idx = Math.min(spreadIndex * 2, pages.length - 1);
+  return { characterId, sectionId, loaded: pages[idx], index: idx, count: pages.length };
+}
+
+// ----- autosave plumbing -----
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const pending = new Map<string, () => Promise<void>>();
-/** Saves that have started writing and not finished yet, by `${tabId}:${pageId}`. */
 const inFlight = new Map<string, Promise<void>>();
-/** Outside changes are applied one batch at a time per notes folder. */
 const outsideQueue = new Map<string, Promise<void>>();
-/** Notes folders being watched, by tab id. */
 const watched = new Map<string, string>();
 
 function scheduleSave(key: string, run: () => Promise<void>) {
@@ -180,57 +185,62 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     await backend.writeAppConfig(JSON.stringify(config, null, 2) + "\n");
   }
 
-  function setTab(tabId: string, state: TabState) {
-    set((s) => ({ tabs: { ...s.tabs, [tabId]: state } }));
+  function setCharacter(characterId: string, state: CharacterState) {
+    set((s) => ({ characters: { ...s.characters, [characterId]: state } }));
   }
 
-  function rememberLast(tabId: string, pageId?: string) {
+  function rememberLast(characterId: string, sectionId?: string) {
     const c = get().config;
-    if (c.lastOpened.tabId === tabId && c.lastOpened.pageId === pageId) return;
-    void get().updateConfig((cfg) => ({ ...cfg, lastOpened: { tabId, pageId } }));
+    if (c.lastOpened.characterId === characterId && c.lastOpened.sectionId === sectionId) return;
+    void get().updateConfig((cfg) => ({
+      ...cfg,
+      lastOpened: { characterId, sectionId },
+    }));
   }
 
-  function savePageNow(tabId: string, pageId: string): Promise<void> {
-    const key = `${tabId}:${pageId}`;
-    const run = writePage(tabId, pageId).finally(() => {
+  function savePageNow(characterId: string, sectionId: string, pageId: string): Promise<void> {
+    const key = `${characterId}:${sectionId}:${pageId}`;
+    const run = writePage(characterId, sectionId, pageId).finally(() => {
       if (inFlight.get(key) === run) inFlight.delete(key);
     });
     inFlight.set(key, run);
     return run;
   }
 
-  async function writePage(tabId: string, pageId: string) {
-    const tab = get().tabs[tabId];
-    if (!tab || tab.status !== "ok") return;
-    const loaded = tab.pages.find((p) => p.page.id === pageId);
+  async function writePage(characterId: string, sectionId: string, pageId: string) {
+    const ch = get().characters[characterId];
+    if (!ch || ch.status !== "ok") return;
+    const pages = ch.sectionPages[sectionId] ?? [];
+    const loaded = pages.find((p) => p.page.id === pageId);
     if (!loaded || loaded.readOnly) return;
     set({ save: { kind: "saving" } });
     try {
-      // Renaming a page renames the file (SPEC: Saving rules).
       let fileName = loaded.fileName;
       const stem = pageFileName(loaded.page).replace(/\.page\.json$/, "");
       const matches = new RegExp(
         `^${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(-\\d+)?\\.page\\.json$`,
       );
       if (!matches.test(fileName)) {
-        const taken = new Set(tab.pages.filter((p) => p !== loaded).map((p) => p.fileName));
+        const taken = new Set(pages.filter((p) => p !== loaded).map((p) => p.fileName));
         const next = uniquePageFileName(loaded.page, taken);
-        const from = pagePath(tab.notesPath, fileName);
-        // The old file may have been deleted outside the app; then just write the new one.
+        const from = pagePath(ch.notebookPath, sectionId, fileName);
         if (await backend.pathExists(from)) {
-          await backend.renameFile(from, pagePath(tab.notesPath, next));
+          await backend.renameFile(from, pagePath(ch.notebookPath, sectionId, next));
         }
         forgetDiskText(from);
         fileName = next;
-        await savePage(tab.notesPath, fileName, loaded.page);
+        await savePage(ch.notebookPath, sectionId, fileName, loaded.page);
       } else {
-        await savePage(tab.notesPath, fileName, loaded.page);
+        await savePage(ch.notebookPath, sectionId, fileName, loaded.page);
       }
-      const cur = get().tabs[tabId];
+      const cur = get().characters[characterId];
       if (cur?.status === "ok") {
-        setTab(tabId, {
+        const updatedPages = (cur.sectionPages[sectionId] ?? []).map((p) =>
+          p.page.id === pageId ? { ...p, fileName } : p,
+        );
+        setCharacter(characterId, {
           ...cur,
-          pages: cur.pages.map((p) => (p.page.id === pageId ? { ...p, fileName } : p)),
+          sectionPages: { ...cur.sectionPages, [sectionId]: updatedPages },
         });
       }
       set({ save: pending.size === 0 ? { kind: "saved", at: new Date() } : { kind: "unsaved" } });
@@ -239,143 +249,57 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     }
   }
 
-  /** Takes a page out of a tab's state and, if it was open, opens its neighbour. */
-  function dropPage(tabId: string, pageId: string) {
+  function dropPage(characterId: string, sectionId: string, pageId: string) {
     histories.delete(pageId);
-    const cur = get().tabs[tabId];
-    if (cur?.status !== "ok") return;
-    const index = cur.pages.findIndex((p) => p.page.id === pageId);
+    const ch = get().characters[characterId];
+    if (ch?.status !== "ok") return;
+    const pages = ch.sectionPages[sectionId] ?? [];
+    const index = pages.findIndex((p) => p.page.id === pageId);
     if (index < 0) return;
-    const pages = cur.pages.filter((p) => p.page.id !== pageId);
-    setTab(tabId, { ...cur, pages });
-    if (get().currentPage[tabId] !== pageId && pages.length > 0) return;
-    const next = pages[Math.min(index, pages.length - 1)];
-    set((s) => {
-      const currentPage = { ...s.currentPage };
-      if (next) currentPage[tabId] = next.page.id;
-      else delete currentPage[tabId];
-      return { currentPage };
-    });
+    const updated = pages.filter((p) => p.page.id !== pageId);
+    setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updated } });
+
+    // If we dropped the current page, move to neighbour
     const view = get().view;
-    if (view.kind === "tab" && view.tabId === tabId) {
-      rememberLast(tabId, next?.page.id);
-      set({
-        save: next?.readOnly
-          ? { kind: "read-only", reason: next.warning ?? "" }
-          : { kind: "saved" },
-      });
+    if ("characterId" in view && view.characterId === characterId && view.sectionId === sectionId) {
+      const spreadIndex = Math.floor(Math.min(index, Math.max(0, updated.length - 1)) / 2);
+      set({ view: { ...view, spreadIndex: Math.max(0, spreadIndex) } });
     }
   }
 
-  /** Best effort: the app config is the source of truth for names and colours. */
-  function syncNotebookMeta(tabId: string) {
-    const tab = get().config.tabs.find((t) => t.id === tabId);
-    const state = get().tabs[tabId];
-    if (!tab || state?.status !== "ok") return;
-    void backend.updateNotebookMeta(state.notesPath, tab.name, tab.colour).catch(() => undefined);
+  function syncCharacterJson(characterId: string) {
+    const cfg = get().config.characters.find((c) => c.id === characterId);
+    const state = get().characters[characterId];
+    if (!cfg || state?.status !== "ok") return;
+    void backend.updateCharacterMeta(state.notebookPath, cfg.name, cfg.cover).catch(() => undefined);
   }
 
-  function watchFolder(tabId: string, notesPath: string | null) {
-    const old = watched.get(tabId);
-    if (old === notesPath) return;
+  function watchFolder(characterId: string, notebookPath: string | null) {
+    const old = watched.get(characterId);
+    if (old === notebookPath) return;
     if (old) {
-      watched.delete(tabId);
-      void backend.unwatchNotesFolder(old).catch(() => undefined);
+      watched.delete(characterId);
+      void backend.unwatchNotebookFolder(old).catch(() => undefined);
     }
-    if (notesPath) {
-      watched.set(tabId, notesPath);
-      void backend.watchNotesFolder(notesPath).catch(() => watched.delete(tabId));
+    if (notebookPath) {
+      watched.set(characterId, notebookPath);
+      void backend.watchNotebookFolder(notebookPath).catch(() => watched.delete(characterId));
     }
   }
 
-  /** One changed file: reload, add or remove its page, unless the app has unsaved edits. */
-  async function applyOutsideFile(tabId: string, fileName: string) {
-    const start = get().tabs[tabId];
-    if (start?.status !== "ok") return;
-    const path = pagePath(start.notesPath, fileName);
-
-    // Let any save of this file finish first, so the app's own write never looks external.
-    const before = start.pages.find((p) => p.fileName === fileName);
-    const writing = before && inFlight.get(`${tabId}:${before.page.id}`);
-    if (writing) await writing.catch(() => undefined);
-
-    const exists = await backend.pathExists(path);
-    const text = exists ? await backend.readTextFile(path).catch(() => null) : null;
-    if (exists && text === null) return;
-    if (text !== null && text === knownDiskText(path)) return;
-
-    const tab = get().tabs[tabId];
-    if (tab?.status !== "ok") return;
-    const unsaved = (pageId: string) =>
-      pending.has(`${tabId}:${pageId}`) || inFlight.has(`${tabId}:${pageId}`);
-    const byName = tab.pages.find((p) => p.fileName === fileName);
-
-    if (text === null) {
-      // Removed or renamed outside the app.
-      if (!byName) return;
-      if (unsaved(byName.page.id)) {
-        set({
-          notice: `"${byName.page.title}" was deleted outside the app while you had unsaved changes. Your version was kept and will be saved again.`,
-        });
-        return;
-      }
-      forgetDiskText(path);
-      dropPage(tabId, byName.page.id);
-      return;
-    }
-
-    const parsed = parsePage(text);
-    if (!parsed.ok) return; // half-written by a sync tool, or not a page: wait for the next change
-    const page = parsed.page;
-    const byId = tab.pages.find((p) => p.page.id === page.id);
-    const target = byName ?? byId;
-
-    if (target && unsaved(target.page.id)) {
-      set({
-        notice: `"${target.page.title}" was changed outside the app while you had unsaved changes. Your version was kept.`,
-      });
-      return;
-    }
-    if (!byName && byId && (await backend.pathExists(pagePath(tab.notesPath, byId.fileName)))) {
-      // A copy of an open page under another name (same page id): leave it alone.
-      return;
-    }
-
-    rememberDiskText(path, text);
-    if (byName && byName.page.id !== page.id) {
-      // The file now holds a different page, so the old one has gone from disk.
-      dropPage(tabId, byName.page.id);
-    }
-    const fresh = get().tabs[tabId];
-    if (fresh?.status !== "ok") return;
-    const entry: LoadedPage = {
-      fileName,
-      page,
-      readOnly: parsed.readOnly,
-      warning: parsed.warning,
-    };
-    const pages = [...fresh.pages.filter((p) => p.page.id !== page.id), entry].sort((a, b) =>
-      a.page.createdAt.localeCompare(b.page.createdAt),
-    );
-    histories.delete(page.id); // undo steps from before the reload no longer apply
-    setTab(tabId, { ...fresh, pages });
-    if (entry.readOnly && get().currentPage[tabId] === page.id) {
-      set({ save: { kind: "read-only", reason: entry.warning ?? "" } });
-    }
-    set((s) => ({ historyTick: s.historyTick + 1 }));
-  }
-
-  /** Adds a new page to a tab, opens it and writes its file. */
-  async function addPage(tabId: string, page: Page) {
-    const tab = get().tabs[tabId];
-    if (!tab || tab.status !== "ok") return;
-    const taken = new Set(tab.pages.map((p) => p.fileName));
+  async function addPage(characterId: string, sectionId: string, page: Page) {
+    const ch = get().characters[characterId];
+    if (!ch || ch.status !== "ok") return;
+    const pages = ch.sectionPages[sectionId] ?? [];
+    const taken = new Set(pages.map((p) => p.fileName));
     const fileName = uniquePageFileName(page, taken);
-    setTab(tabId, { ...tab, pages: [...tab.pages, { fileName, page, readOnly: false }] });
-    set((s) => ({ currentPage: { ...s.currentPage, [tabId]: page.id } }));
-    rememberLast(tabId, page.id);
+    const updated = [...pages, { fileName, page, readOnly: false }];
+    setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updated } });
+    const spreadIndex = Math.floor((updated.length - 1) / 2);
+    set({ view: { characterId, sectionId, spreadIndex } });
+    rememberLast(characterId, sectionId);
     try {
-      await savePage(tab.notesPath, fileName, page);
+      await savePage(ch.notebookPath, sectionId, fileName, page);
       set({ save: { kind: "saved", at: new Date() } });
     } catch (e) {
       set({ save: { kind: "error", message: String(e) } });
@@ -385,27 +309,31 @@ export const useNotebook = create<NotebookStore>((set, get) => {
   return {
     ready: false,
     config: defaultConfig(),
-    tabs: {},
-    currentPage: {},
+    characters: {},
     view: { kind: "empty" },
     save: { kind: "saved" },
     settingsOpen: false,
+    pageListOpen: false,
     notice: null,
+    flash: null,
+    historyTick: 0,
 
     async init() {
       const config = parseConfig(await backend.readAppConfig());
-      const tabs = visibleTabs(config);
+      const visible = visibleCharacters(config);
       const last = config.lastOpened;
-      const startTab = tabs.find((t) => t.id === last.tabId) ?? tabs[0];
-      // Show the shell straight away; tabs fill in as their folders are read.
+      const startChar = visible.find((c) => c.id === last.characterId) ?? visible[0];
       set({
         config,
-        tabs: Object.fromEntries(tabs.map((t) => [t.id, { status: "loading" } as TabState])),
-        view: startTab ? { kind: "tab", tabId: startTab.id } : { kind: "empty" },
-        currentPage: startTab && last.pageId ? { [startTab.id]: last.pageId } : {},
+        characters: Object.fromEntries(
+          visible.map((c) => [c.id, { status: "loading" } as CharacterState]),
+        ),
+        view: startChar
+          ? { characterId: startChar.id, sectionId: last.sectionId ?? "sessions", spreadIndex: 0 }
+          : { kind: "empty" },
         ready: true,
       });
-      await Promise.all(tabs.map((t) => get().reloadTab(t.id)));
+      await Promise.all(visible.map((c) => get().reloadCharacter(c.id)));
     },
 
     async updateConfig(mutate) {
@@ -414,356 +342,424 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       await persistConfig(config);
     },
 
-    async addClient({ name, colour, folder, notesPath }) {
+    async addCharacter({ name, cover, folder, notebookPath }) {
       const id = newId();
-      const order = Math.max(-1, ...get().config.tabs.map((t) => t.order)) + 1;
-      const tab: TabConfig = {
-        id,
-        name,
-        colour,
-        folder,
-        order,
-        archived: false,
-        excludeFromAi: false,
-      };
-      await get().updateConfig((c) => ({ ...c, tabs: [...c.tabs, tab] }));
-      setTab(id, { status: "loading" });
-      await get().reloadTab(id);
-      void notesPath;
-      get().openTab(id);
+      const order = Math.max(-1, ...get().config.characters.map((c) => c.order)) + 1;
+      const cfg: CharacterConfig = { id, name, cover, folder, order, archived: false, excludeFromAi: false };
+      await get().updateConfig((c) => ({ ...c, characters: [...c.characters, cfg] }));
+      setCharacter(id, { status: "loading" });
+      await get().reloadCharacter(id);
+      void notebookPath;
+      get().openCharacter(id);
     },
 
-    async moveNotes(tabId, folder) {
-      const state = get().tabs[tabId];
-      if (state?.status !== "ok") throw new Error("The current notes folder cannot be found.");
-      await get().flushSaves();
-      // Windows will not move a folder that is being watched.
-      watchFolder(tabId, null);
-      let r;
-      try {
-        r = await backend.moveNotes(state.notesPath, folder);
-      } catch (e) {
-        watchFolder(tabId, state.notesPath);
-        throw e;
-      }
-      await get().changeFolder(tabId, folder, r.notesPath);
-      const files = r.files === 1 ? "1 file" : `${r.files} files`;
-      set({
-        notice: r.oldLeftBehind
-          ? `Moved and checked ${files} in ${r.notesPath}. The old notes folder could not go to the Recycle Bin (${r.oldLeftBehind}); delete ${state.notesPath} yourself once you have checked the new one.`
-          : `Moved and checked ${files} in ${r.notesPath}. The old notes folder is in the Recycle Bin.`,
-      });
-    },
-
-    async renameTab(tabId, name) {
-      const clean = name.trim();
-      const tab = get().config.tabs.find((t) => t.id === tabId);
-      if (!clean || !tab || tab.name === clean) return;
+    async renameCharacter(characterId, name) {
+      if (!name.trim()) return;
       await get().updateConfig((c) => ({
         ...c,
-        tabs: c.tabs.map((t) => (t.id === tabId ? { ...t, name: clean } : t)),
+        characters: c.characters.map((ch) =>
+          ch.id === characterId ? { ...ch, name: name.trim() } : ch,
+        ),
       }));
-      syncNotebookMeta(tabId);
+      syncCharacterJson(characterId);
     },
 
-    async setTabColour(tabId, colour) {
-      const tab = get().config.tabs.find((t) => t.id === tabId);
-      if (!tab || tab.colour === colour) return;
+    async setCharacterCover(characterId, cover) {
       await get().updateConfig((c) => ({
         ...c,
-        tabs: c.tabs.map((t) => (t.id === tabId ? { ...t, colour } : t)),
+        characters: c.characters.map((ch) =>
+          ch.id === characterId ? { ...ch, cover } : ch,
+        ),
       }));
-      syncNotebookMeta(tabId);
+      syncCharacterJson(characterId);
     },
 
-    async archiveTab(tabId) {
-      const before = visibleTabs(get().config);
-      const index = before.findIndex((t) => t.id === tabId);
-      if (index < 0) return;
-      const name = before[index].name;
+    async archiveCharacter(characterId) {
       await get().updateConfig((c) => ({
         ...c,
-        tabs: c.tabs.map((t) => (t.id === tabId ? { ...t, archived: true } : t)),
+        characters: c.characters.map((ch) =>
+          ch.id === characterId ? { ...ch, archived: true } : ch,
+        ),
       }));
+      watchFolder(characterId, null);
       const view = get().view;
-      if (view.kind === "tab" && view.tabId === tabId) {
-        const rest = before.filter((t) => t.id !== tabId);
-        const next = rest[Math.min(index, rest.length - 1)];
-        if (next) get().openTab(next.id);
-        else set({ view: { kind: "empty" }, pageListOpen: false });
+      if ("characterId" in view && view.characterId === characterId) {
+        const next = visibleCharacters(get().config).find((c) => c.id !== characterId);
+        set({
+          view: next
+            ? { characterId: next.id, sectionId: "sessions", spreadIndex: 0 }
+            : { kind: "empty" },
+        });
       }
-      set({
-        notice: `Archived "${name}". Its files are untouched; restore it from Settings, Clients and folders.`,
-      });
     },
 
-    async restoreTab(tabId) {
-      const tab = get().config.tabs.find((t) => t.id === tabId);
-      if (!tab?.archived) return;
-      const order = Math.max(-1, ...visibleTabs(get().config).map((t) => t.order)) + 1;
-      if (get().notice?.startsWith(`Archived "${tab.name}"`)) set({ notice: null });
+    async restoreCharacter(characterId) {
       await get().updateConfig((c) => ({
         ...c,
-        tabs: c.tabs.map((t) => (t.id === tabId ? { ...t, archived: false, order } : t)),
+        characters: c.characters.map((ch) =>
+          ch.id === characterId ? { ...ch, archived: false } : ch,
+        ),
       }));
-      const state = get().tabs[tabId];
-      if (!state || state.status !== "ok") {
-        setTab(tabId, { status: "loading" });
-        await get().reloadTab(tabId);
-      }
-      get().openTab(tabId);
+      setCharacter(characterId, { status: "loading" });
+      await get().reloadCharacter(characterId);
+      get().openCharacter(characterId);
     },
 
-    async moveTab(tabId, slot) {
-      const ids = visibleTabs(get().config).map((t) => t.id);
-      const next = moveToSlot(ids, tabId, slot);
-      if (next.every((id, i) => id === ids[i])) return;
-      await get().updateConfig((c) => ({ ...c, tabs: applyTabOrder(c.tabs, next) }));
-    },
-
-    async changeFolder(tabId, folder) {
+    async moveCharacter(characterId, slot) {
+      const visible = visibleCharacters(get().config);
+      const idx = visible.findIndex((c) => c.id === characterId);
+      if (idx < 0) return;
+      const reordered = [...visible];
+      const [moved] = reordered.splice(idx, 1);
+      reordered.splice(Math.min(slot, reordered.length), 0, moved);
       await get().updateConfig((c) => ({
         ...c,
-        tabs: c.tabs.map((t) => (t.id === tabId ? { ...t, folder } : t)),
+        characters: c.characters.map((ch) => {
+          const pos = reordered.findIndex((r) => r.id === ch.id);
+          return pos >= 0 ? { ...ch, order: pos } : ch;
+        }),
       }));
-      await get().reloadTab(tabId);
     },
 
-    async reloadTab(tabId) {
-      const tab = get().config.tabs.find((t) => t.id === tabId);
-      if (!tab) return;
+    async reloadCharacter(characterId) {
+      const cfg = get().config.characters.find((c) => c.id === characterId);
+      if (!cfg) return;
+      const result = await loadCharacterFromDisk(
+        cfg.folder,
+        // Load section ids from the character's default sections for now;
+        // after loading character.json we'd use those sections.
+        ["sessions", "backstory", "likes", "dislikes", "wants", "notes", "sheet"],
+      );
+      if (result.status === "missing") {
+        setCharacter(characterId, { status: "missing", notebookPath: result.notebookPath });
+        watchFolder(characterId, null);
+        return;
+      }
+
+      // Try to load character.json for the section order and hand settings.
+      let character: Character;
       try {
-        const r = await loadTab(tab.folder);
-        if (r.status === "missing") {
-          watchFolder(tabId, null);
-          setTab(tabId, { status: "missing", notesPath: r.notesPath });
-        } else {
-          setTab(tabId, {
-            status: "ok",
-            notesPath: r.notesPath,
-            pages: r.pages,
-            errors: r.errors,
-          });
-          watchFolder(tabId, r.notesPath);
-          if (r.errors.length) set({ notice: `Some pages could not be opened: ${r.errors[0]}` });
-        }
-      } catch (e) {
-        set({ notice: `Could not open ${tab.name}: ${String(e)}` });
-        watchFolder(tabId, null);
-        setTab(tabId, { status: "missing", notesPath: tab.folder });
+        const text = await backend.readTextFile(`${result.notebookPath}/character.json`);
+        character = parseCharacter(text) ?? createCharacter(cfg.name, cfg.cover);
+      } catch {
+        character = createCharacter(cfg.name, cfg.cover);
+      }
+
+      setCharacter(characterId, {
+        status: "ok",
+        notebookPath: result.notebookPath,
+        character,
+        sectionPages: result.sectionPages,
+        errors: result.errors,
+      });
+      watchFolder(characterId, result.notebookPath);
+
+      // Open to last section if we're viewing this character.
+      const view = get().view;
+      if ("characterId" in view && view.characterId === characterId) {
+        const v = view;
+        const pages = result.sectionPages[v.sectionId] ?? [];
+        const spreadIndex = Math.min(v.spreadIndex, Math.max(0, Math.ceil(pages.length / 2) - 1));
+        set({ view: { ...v, spreadIndex } });
+        rememberLast(characterId, v.sectionId);
+        const loaded = pages[spreadIndex * 2];
+        set({
+          save: loaded?.readOnly
+            ? { kind: "read-only", reason: loaded.warning ?? "" }
+            : { kind: "saved" },
+        });
       }
     },
 
-    openTab(tabId) {
-      set({ view: { kind: "tab", tabId }, pageListOpen: false });
-      const cur = currentPageOf(get());
-      rememberLast(tabId, cur?.loaded.page.id);
-      const ro = cur?.loaded.readOnly;
-      set({
-        save: ro ? { kind: "read-only", reason: cur?.loaded.warning ?? "" } : { kind: "saved" },
-      });
-      if (ro && cur?.loaded.warning) set({ notice: cur.loaded.warning });
+    openCharacter(characterId) {
+      const cfg = get().config.characters.find((c) => c.id === characterId);
+      if (!cfg) return;
+      const ch = get().characters[characterId];
+      const sectionId = "sessions";
+      set({ view: { characterId, sectionId, spreadIndex: 0 } });
+      rememberLast(characterId, sectionId);
+      if (!ch || ch.status === "missing") {
+        setCharacter(characterId, { status: "loading" });
+        void get().reloadCharacter(characterId);
+      }
+    },
+
+    openSection(characterId, sectionId) {
+      set({ view: { characterId, sectionId, spreadIndex: 0 } });
+      rememberLast(characterId, sectionId);
     },
 
     setSettingsOpen(open) {
       set({ settingsOpen: open });
     },
 
-    dismissNotice() {
-      set({ notice: null });
-    },
-
-    async newPage() {
-      const view = get().view;
-      if (view.kind !== "tab") return;
-      await addPage(view.tabId, createPage());
-    },
-
-    async duplicatePage(tabId, pageId) {
-      const tab = get().tabs[tabId];
-      if (tab?.status !== "ok") return;
-      const source = tab.pages.find((p) => p.page.id === pageId);
-      if (!source || source.readOnly) return;
-      const page: Page = {
-        ...createPage(new Date(), `${source.page.title} (copy)`),
-        elements: source.page.elements.map((el) => duplicate(el, 0, 0)),
-      };
-      await addPage(tabId, page);
-    },
-
-    async deletePage(tabId, pageId) {
-      // Finish any pending save first, so the copy in the Recycle Bin is the latest.
-      const key = `${tabId}:${pageId}`;
-      const job = pending.get(key);
-      const timer = timers.get(key);
-      if (timer) clearTimeout(timer);
-      timers.delete(key);
-      pending.delete(key);
-      if (job) await job();
-      await inFlight.get(key)?.catch(() => undefined);
-
-      const tab = get().tabs[tabId];
-      if (tab?.status !== "ok") return false;
-      const loaded = tab.pages.find((p) => p.page.id === pageId);
-      if (!loaded || loaded.readOnly) return false;
-      const path = pagePath(tab.notesPath, loaded.fileName);
-      try {
-        await backend.trashPageFile(path);
-      } catch (e) {
-        set({ notice: String(e) });
-        return false;
-      }
-      forgetDiskText(path);
-      dropPage(tabId, pageId);
-      return true;
-    },
-
-    renamePage(tabId, pageId, title) {
-      const clean = title.trim();
-      const tab = get().tabs[tabId];
-      const loaded = tab?.status === "ok" ? tab.pages.find((p) => p.page.id === pageId) : undefined;
-      if (!clean || !loaded || loaded.page.title === clean) return;
-      get().updatePageIn(tabId, pageId, (p) => ({ ...p, title: clean }));
-    },
-
-    pageListOpen: false,
     setPageListOpen(open) {
       set({ pageListOpen: open });
     },
 
-    goToPage(delta) {
-      const cur = currentPageOf(get());
-      if (!cur) return;
-      const tab = get().tabs[cur.tabId];
-      if (tab?.status !== "ok") return;
-      const next = Math.min(cur.count - 1, Math.max(0, cur.index + delta));
-      const target = tab.pages[next];
-      set((s) => ({ currentPage: { ...s.currentPage, [cur.tabId]: target.page.id } }));
-      rememberLast(cur.tabId, target.page.id);
-      set({
-        save: target.readOnly
-          ? { kind: "read-only", reason: target.warning ?? "" }
-          : { kind: "saved" },
-        notice: target.readOnly && target.warning ? target.warning : get().notice,
-      });
+    dismissNotice() {
+      set({ notice: null });
+    },
+
+    goToSpread(index) {
+      const view = get().view;
+      if (!("characterId" in view)) return;
+      const ch = get().characters[view.characterId];
+      if (!ch || ch.status !== "ok") return;
+      const pages = ch.sectionPages[view.sectionId] ?? [];
+      const max = Math.max(0, Math.ceil(pages.length / 2) - 1);
+      set({ view: { ...view, spreadIndex: Math.max(0, Math.min(index, max)) } });
+    },
+
+    goToSpreadDelta(delta) {
+      const view = get().view;
+      if (!("characterId" in view)) return;
+      get().goToSpread(view.spreadIndex + delta);
+    },
+
+    async newPage() {
+      const view = get().view;
+      if (!("characterId" in view)) return;
+      const { characterId, sectionId } = view;
+      const page = createPage(new Date(), "Untitled page", sectionId);
+      await addPage(characterId, sectionId, page);
+    },
+
+    async duplicatePage(characterId, sectionId, pageId) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const loaded = pages.find((p) => p.page.id === pageId);
+      if (!loaded) return;
+      const now = new Date().toISOString();
+      const copy: Page = {
+        ...loaded.page,
+        id: newId(),
+        title: `${loaded.page.title} (copy)`,
+        createdAt: now,
+        updatedAt: now,
+        elements: loaded.page.elements.map((el) => ({ ...el, id: newId() })),
+      };
+      await addPage(characterId, sectionId, copy);
+    },
+
+    async deletePage(characterId, sectionId, pageId) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return false;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const loaded = pages.find((p) => p.page.id === pageId);
+      if (!loaded) return false;
+      const key = `${characterId}:${sectionId}:${pageId}`;
+      const inflight = inFlight.get(key);
+      if (inflight) await inflight.catch(() => undefined);
+      const path = pagePath(ch.notebookPath, sectionId, loaded.fileName);
+      try {
+        await backend.trashPageFile(path);
+        forgetDiskText(path);
+        dropPage(characterId, sectionId, pageId);
+        return true;
+      } catch (e) {
+        set({ save: { kind: "error", message: String(e) } });
+        return false;
+      }
+    },
+
+    renamePage(characterId, sectionId, pageId, title) {
+      if (!title.trim()) return;
+      const ch0 = get().characters[characterId];
+      if (ch0?.status === "ok") {
+        const p0 = ch0.sectionPages[sectionId]?.find((p) => p.page.id === pageId);
+        if (p0 && p0.page.title === title.trim()) return;
+      }
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const loaded = pages.find((p) => p.page.id === pageId);
+      if (!loaded) return;
+      const updated = { ...loaded, page: { ...loaded.page, title: title.trim() } };
+      const updatedPages = pages.map((p) => (p.page.id === pageId ? updated : p));
+      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
+      const key = `${characterId}:${sectionId}:${pageId}`;
+      scheduleSave(key, () => savePageNow(characterId, sectionId, pageId));
     },
 
     updatePage(mutate) {
       const cur = currentPageOf(get());
       if (!cur) return;
-      get().updatePageIn(cur.tabId, cur.loaded.page.id, mutate);
-    },
-
-    updatePageIn(tabId, pageId, mutate) {
-      const tab = get().tabs[tabId];
-      if (tab?.status !== "ok") return;
-      const loaded = tab.pages.find((p) => p.page.id === pageId);
-      if (!loaded || loaded.readOnly) return;
-      const updated = { ...mutate(loaded.page), updatedAt: new Date().toISOString() };
-      setTab(tabId, {
-        ...tab,
-        pages: tab.pages.map((p) => (p.page.id === pageId ? { ...p, page: updated } : p)),
-      });
+      const { characterId, sectionId, loaded } = cur;
+      const page = mutate(loaded.page);
+      if (page === loaded.page) return;
+      const ch = get().characters[characterId];
+      if (ch?.status !== "ok") return;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const updatedPages = pages.map((p) => (p.page.id === page.id ? { ...p, page } : p));
+      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
       set({ save: { kind: "unsaved" } });
-      scheduleSave(`${tabId}:${pageId}`, () => savePageNow(tabId, pageId));
+      const key = `${characterId}:${sectionId}:${page.id}`;
+      scheduleSave(key, () => savePageNow(characterId, sectionId, page.id));
     },
 
-    flash: null,
-    clearFlash() {
-      set({ flash: null });
+    updatePageIn(characterId, sectionId, pageId, mutate) {
+      const ch = get().characters[characterId];
+      if (ch?.status !== "ok") return;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const loaded = pages.find((p) => p.page.id === pageId);
+      if (!loaded) return;
+      const page = mutate(loaded.page);
+      if (page === loaded.page) return;
+      const updatedPages = pages.map((p) => (p.page.id === pageId ? { ...p, page } : p));
+      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
+      set({ save: { kind: "unsaved" } });
+      const key = `${characterId}:${sectionId}:${pageId}`;
+      scheduleSave(key, () => savePageNow(characterId, sectionId, pageId));
     },
-
-    openPageAt(tabId, pageId, elementId) {
-      set((s) => ({
-        view: { kind: "tab", tabId },
-        currentPage: { ...s.currentPage, [tabId]: pageId },
-        flash: elementId ? { elementId, nonce: Date.now() } : null,
-      }));
-      rememberLast(tabId, pageId);
-      const cur = currentPageOf(get());
-      set({
-        save: cur?.loaded.readOnly
-          ? { kind: "read-only", reason: cur.loaded.warning ?? "" }
-          : { kind: "saved" },
-      });
-    },
-
-    cachedReminders: null,
-
-    historyTick: 0,
 
     editElements(mutate) {
       const cur = currentPageOf(get());
-      if (!cur || cur.loaded.readOnly) return;
-      const before = cur.loaded.page.elements;
-      const after = mutate(before);
-      if (sameElements(before, after)) return;
-      const id = cur.loaded.page.id;
-      histories.set(id, record(histories.get(id) ?? emptyHistory(), before));
-      get().updatePage((p) => ({ ...p, elements: after }));
+      if (!cur) return;
+      const { loaded } = cur;
+      const page = loaded.page;
+      const h = histories.get(page.id) ?? emptyHistory<Element[]>();
+      const next = mutate(page.elements);
+      if (sameElements(next, page.elements)) return;
+      const updated = record(h, next);
+      histories.set(page.id, updated);
       set((s) => ({ historyTick: s.historyTick + 1 }));
+      get().updatePage((p) => ({ ...p, elements: next }));
     },
 
     undo() {
       const cur = currentPageOf(get());
-      if (!cur || cur.loaded.readOnly) return;
-      const id = cur.loaded.page.id;
-      const step = undoStep(
-        histories.get(id) ?? emptyHistory<Element[]>(),
-        cur.loaded.page.elements,
-      );
-      if (!step) return;
-      histories.set(id, step.history);
-      get().updatePage((p) => ({ ...p, elements: step.value }));
+      if (!cur) return;
+      const page = cur.loaded.page;
+      const h = histories.get(page.id);
+      if (!h || h.past.length === 0) return;
+      const undoResult = undoStep(h, page.elements);
+      if (!undoResult) return;
+      histories.set(page.id, undoResult.history);
       set((s) => ({ historyTick: s.historyTick + 1 }));
+      get().updatePage((p) => ({ ...p, elements: undoResult.value }));
     },
 
     redo() {
       const cur = currentPageOf(get());
-      if (!cur || cur.loaded.readOnly) return;
-      const id = cur.loaded.page.id;
-      const step = redoStep(
-        histories.get(id) ?? emptyHistory<Element[]>(),
-        cur.loaded.page.elements,
-      );
-      if (!step) return;
-      histories.set(id, step.history);
-      get().updatePage((p) => ({ ...p, elements: step.value }));
+      if (!cur) return;
+      const page = cur.loaded.page;
+      const h = histories.get(page.id);
+      if (!h || h.future.length === 0) return;
+      const redoResult = redoStep(h, page.elements);
+      if (!redoResult) return;
+      histories.set(page.id, redoResult.history);
       set((s) => ({ historyTick: s.historyTick + 1 }));
-    },
-
-    async applyOutsideChanges(notesPath, fileNames, rescan = false) {
-      const tabId = Object.entries(get().tabs).find(
-        ([, t]) => t.status === "ok" && t.notesPath === notesPath,
-      )?.[0];
-      if (!tabId) return;
-      const prev = outsideQueue.get(notesPath) ?? Promise.resolve();
-      const run = prev.then(async () => {
-        if (rescan && !(await backend.pathExists(notesPath))) {
-          await get().reloadTab(tabId); // shows "Folder not found"
-          return;
-        }
-        for (const name of fileNames) {
-          try {
-            await applyOutsideFile(tabId, name);
-          } catch {
-            // One unreadable file must not stop the others.
-          }
-        }
-      });
-      outsideQueue.set(
-        notesPath,
-        run.catch(() => undefined),
-      );
-      await run;
+      get().updatePage((p) => ({ ...p, elements: redoResult.value }));
     },
 
     async flushSaves() {
-      const jobs = [...pending.values()];
-      for (const t of timers.values()) clearTimeout(t);
-      timers.clear();
+      const jobs = [...pending.values()].map((job) => {
+        const p = job();
+        return p;
+      });
       pending.clear();
-      await Promise.all(jobs.map((j) => j()));
+      timers.forEach(clearTimeout);
+      timers.clear();
+      await Promise.all([...jobs, ...inFlight.values()].map((p) => p.catch(() => undefined)));
+    },
+
+    async applyOutsideChanges(notebookPath, fileNames, rescan) {
+      // Find the character this notebook belongs to.
+      const characterId = Object.entries(get().characters).find(
+        ([, state]) => state.status === "ok" && state.notebookPath === notebookPath,
+      )?.[0];
+      if (!characterId) return;
+
+      // Deduplicate into one queue per notebook path.
+      const prev = outsideQueue.get(notebookPath) ?? Promise.resolve();
+      const next = prev.then(async () => {
+        if (rescan) {
+          await get().reloadCharacter(characterId);
+          return;
+        }
+        for (const fileName of fileNames) {
+          await applyOutsideFile(characterId, fileName);
+        }
+      });
+      outsideQueue.set(notebookPath, next.catch(() => undefined));
+      await next;
+    },
+
+    clearFlash() {
+      set({ flash: null });
     },
   };
+
+  async function applyOutsideFile(characterId: string, fileName: string) {
+    // fileName from the watcher is just the basename; we need to find which section it's in.
+    const ch = get().characters[characterId];
+    if (ch?.status !== "ok") return;
+
+    // Search for the file across all sections.
+    for (const [sectionId, pages] of Object.entries(ch.sectionPages)) {
+      const existing = pages.find((p) => p.fileName === fileName);
+      const path = existing
+        ? pagePath(ch.notebookPath, sectionId, fileName)
+        : null;
+
+      if (!path) continue;
+
+      const key = `${characterId}:${sectionId}:${existing?.page.id ?? ""}`;
+      const writing = existing && inFlight.get(key);
+      if (writing) await writing.catch(() => undefined);
+
+      const exists = await backend.pathExists(path);
+      const text = exists ? await backend.readTextFile(path).catch(() => null) : null;
+      if (exists && text === null) continue;
+      if (text !== null && text === knownDiskText(path)) return;
+
+      const curCh = get().characters[characterId];
+      if (curCh?.status !== "ok") return;
+      const curPages = curCh.sectionPages[sectionId] ?? [];
+      const unsaved = (pageId: string) =>
+        pending.has(`${characterId}:${sectionId}:${pageId}`) ||
+        inFlight.has(`${characterId}:${sectionId}:${pageId}`);
+
+      if (text === null) {
+        if (!existing) return;
+        if (unsaved(existing.page.id)) {
+          set({ notice: `"${existing.page.title}" was deleted outside the app while you had unsaved changes. Your version was kept.` });
+          return;
+        }
+        forgetDiskText(path);
+        dropPage(characterId, sectionId, existing.page.id);
+        return;
+      }
+
+      const parsed = parsePage(text);
+      if (!parsed.ok) return;
+      const page = parsed.page;
+      const byId = curPages.find((p) => p.page.id === page.id);
+      const target = existing ?? byId;
+
+      if (target && unsaved(target.page.id)) {
+        set({ notice: `"${target.page.title}" was changed outside the app while you had unsaved changes. Your version was kept.` });
+        return;
+      }
+
+      rememberDiskText(path, text);
+      if (existing && existing.page.id !== page.id) dropPage(characterId, sectionId, existing.page.id);
+      const freshCh = get().characters[characterId];
+      if (freshCh?.status !== "ok") return;
+      const freshPages = freshCh.sectionPages[sectionId] ?? [];
+      const entry: LoadedPage = { fileName, page, readOnly: parsed.readOnly, warning: parsed.warning };
+      const updatedPages = [...freshPages.filter((p) => p.page.id !== page.id), entry].sort((a, b) =>
+        a.page.createdAt.localeCompare(b.page.createdAt),
+      );
+      histories.delete(page.id);
+      setCharacter(characterId, {
+        ...freshCh,
+        sectionPages: { ...freshCh.sectionPages, [sectionId]: updatedPages },
+      });
+      set((s) => ({ historyTick: s.historyTick + 1 }));
+      return;
+    }
+  }
 });

@@ -1,6 +1,6 @@
 import { parsePage, serialisePage, type Page } from "../model/page";
 import { backend } from "./backend";
-import { notesPathFor, pagePath } from "./paths";
+import { notebookPathFor, pagePath, sectionPagesDir } from "./paths";
 
 export type LoadedPage = {
   fileName: string;
@@ -27,29 +27,24 @@ export function forgetDiskText(path: string): void {
   knownText.delete(path);
 }
 
-export type TabLoadResult =
-  | {
-      status: "ok";
-      notesPath: string;
-      pages: LoadedPage[];
-      errors: string[];
-    }
-  | { status: "missing"; notesPath: string };
+export type SectionLoadResult =
+  | { status: "ok"; pages: LoadedPage[]; errors: string[] }
+  | { status: "missing" };
 
-/**
- * Reads every page in a client's notes folder. A missing folder is reported,
- * never recreated (SPEC: Saving rules).
- */
-export async function loadTab(folder: string): Promise<TabLoadResult> {
-  const notesPath = notesPathFor(folder);
-  if (!(await backend.pathExists(notesPath))) return { status: "missing", notesPath };
+/** Reads every page in one section folder. Missing folder → "missing". */
+export async function loadSectionPages(
+  notebookPath: string,
+  sectionId: string,
+): Promise<SectionLoadResult> {
+  const dir = sectionPagesDir(notebookPath, sectionId);
+  if (!(await backend.pathExists(dir))) return { status: "missing" };
 
-  const names = await backend.listPageFiles(notesPath);
+  const names = await backend.listSectionPageFiles(notebookPath, sectionId);
   const pages: LoadedPage[] = [];
   const errors: string[] = [];
   for (const fileName of names) {
     try {
-      const path = pagePath(notesPath, fileName);
+      const path = pagePath(notebookPath, sectionId, fileName);
       const text = await backend.readTextFile(path);
       rememberDiskText(path, text);
       const parsed = parsePage(text);
@@ -68,13 +63,45 @@ export async function loadTab(folder: string): Promise<TabLoadResult> {
     }
   }
   pages.sort((a, b) => a.page.createdAt.localeCompare(b.page.createdAt));
-  return { status: "ok", notesPath, pages, errors };
+  return { status: "ok", pages, errors };
 }
 
-export async function savePage(notesPath: string, fileName: string, page: Page): Promise<void> {
-  const path = pagePath(notesPath, fileName);
+export type CharacterLoadResult =
+  | { status: "ok"; notebookPath: string; sectionPages: Record<string, LoadedPage[]>; errors: string[] }
+  | { status: "missing"; notebookPath: string };
+
+/** Loads all pages for all sections of a character. */
+export async function loadCharacter(
+  folder: string,
+  sectionIds: string[],
+): Promise<CharacterLoadResult> {
+  const notebookPath = notebookPathFor(folder);
+  if (!(await backend.pathExists(notebookPath))) return { status: "missing", notebookPath };
+
+  const allErrors: string[] = [];
+  const sectionPages: Record<string, LoadedPage[]> = {};
+  await Promise.all(
+    sectionIds.map(async (sid) => {
+      const r = await loadSectionPages(notebookPath, sid);
+      if (r.status === "ok") {
+        sectionPages[sid] = r.pages;
+        allErrors.push(...r.errors);
+      } else {
+        sectionPages[sid] = [];
+      }
+    }),
+  );
+  return { status: "ok", notebookPath, sectionPages, errors: allErrors };
+}
+
+export async function savePage(
+  notebookPath: string,
+  sectionId: string,
+  fileName: string,
+  page: Page,
+): Promise<void> {
+  const path = pagePath(notebookPath, sectionId, fileName);
   const text = serialisePage(page);
-  // Remember before writing, so the watcher event for this write is recognised as ours.
   rememberDiskText(path, text);
   await backend.writeTextAtomic(path, text);
 }

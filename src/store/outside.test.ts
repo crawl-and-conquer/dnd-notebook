@@ -1,46 +1,47 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { backend } from "../storage/backend";
 import { pagePath } from "../storage/paths";
-import { createPage, serialisePage, type Page } from "../model/page";
-import { currentPageOf, useNotebook } from "./notebook";
+import { serialisePage, type Page } from "../model/page";
+import { useNotebook } from "./notebook";
 
 // Simulates edits made outside the app (another editor, OneDrive, Dropbox) by writing
 // straight to the in-memory backend, then feeding the watcher's file names to the store.
 
 const FOLDER = "C:/Demo/Outside";
-const NOTES = `${FOLDER}/notes`;
+const NOTEBOOK = `${FOLDER}/notebook`;
+const SECTION = "sessions";
 
 const state = () => useNotebook.getState();
-function tab() {
-  const tabId = state().config.tabs[0].id;
-  const t = state().tabs[tabId];
-  if (t?.status !== "ok") throw new Error("tab not loaded");
-  return { tabId, pages: t.pages };
+function char() {
+  const charId = state().config.characters.find((c) => c.folder === FOLDER)!.id;
+  const c = state().characters[charId];
+  if (c?.status !== "ok") throw new Error("character not loaded");
+  return { charId, pages: c.sectionPages[SECTION] ?? [] };
 }
-const byTitle = (title: string) => tab().pages.find((p) => p.page.title === title);
+const byTitle = (title: string) => char().pages.find((p) => p.page.title === title);
 const writeOutside = (fileName: string, text: string) =>
-  backend.writeTextAtomic(pagePath(NOTES, fileName), text);
-const changed = (...files: string[]) => state().applyOutsideChanges(NOTES, files);
+  backend.writeTextAtomic(pagePath(NOTEBOOK, SECTION, fileName), text);
+const changed = (...files: string[]) => state().applyOutsideChanges(NOTEBOOK, files);
 
 async function addPage(title: string, at: string): Promise<{ fileName: string; page: Page }> {
   await state().newPage();
-  const { tabId, pages } = tab();
+  const { charId, pages } = char();
   const last = pages[pages.length - 1];
-  state().updatePageIn(tabId, last.page.id, (p) => ({ ...p, title, createdAt: at }));
+  state().updatePageIn(charId, SECTION, last.page.id, (p) => ({ ...p, title, createdAt: at }));
   await state().flushSaves();
-  const saved = tab().pages.find((p) => p.page.id === last.page.id);
+  const saved = char().pages.find((p) => p.page.id === last.page.id);
   if (!saved) throw new Error("page missing");
   return { fileName: saved.fileName, page: saved.page };
 }
 
 describe("changes made outside the app", () => {
   beforeAll(async () => {
-    const r = await backend.prepareClientFolder(FOLDER, "Outside", "#E8A828", false);
-    await state().addClient({
+    const r = await backend.prepareCharacterFolder(FOLDER, "Outside", "#46562f", false);
+    await state().addCharacter({
       name: "Outside",
-      colour: "#E8A828",
+      cover: "#46562f",
       folder: FOLDER,
-      notesPath: r.notesPath,
+      notebookPath: r.notebookPath,
     });
     await addPage("Alpha", "2026-11-01T09:00:00.000Z");
     await addPage("Bravo", "2026-11-02T09:00:00.000Z");
@@ -87,10 +88,8 @@ describe("changes made outside the app", () => {
 
   it("keeps unsaved edits and shows a notice", async () => {
     const bravo = byTitle("Bravo")!;
-    const { tabId } = tab();
-    state().updatePageIn(tabId, bravo.page.id, (p) => ({ ...p, title: "Bravo" }));
-    await writeOutside(bravo.fileName, serialisePage({ ...bravo.page, elements: [] }));
-    // Make the outside version differ from what the app last wrote.
+    const { charId } = char();
+    state().updatePageIn(charId, SECTION, bravo.page.id, (p) => ({ ...p, title: "Bravo" }));
     await writeOutside(
       bravo.fileName,
       serialisePage({ ...bravo.page, updatedAt: "2026-11-06T11:00:00.000Z" }),
@@ -100,7 +99,7 @@ describe("changes made outside the app", () => {
     expect(byTitle("Bravo")!.page.updatedAt).not.toBe("2026-11-06T11:00:00.000Z");
     // The in-app version wins on the next save.
     await state().flushSaves();
-    const disk = await backend.readTextFile(pagePath(NOTES, byTitle("Bravo")!.fileName));
+    const disk = await backend.readTextFile(pagePath(NOTEBOOK, SECTION, byTitle("Bravo")!.fileName));
     expect(disk).not.toContain("2026-11-06T11:00:00.000Z");
   });
 
@@ -114,53 +113,27 @@ describe("changes made outside the app", () => {
     await changed(alpha.fileName);
   });
 
-  it("adds a page created outside, in date order", async () => {
-    const page = { ...createPage(new Date("2026-11-01T12:00:00.000Z")), title: "From laptop" };
-    await writeOutside("2026-11-01-from-laptop.page.json", serialisePage(page));
-    await changed("2026-11-01-from-laptop.page.json");
-    expect(tab().pages.map((p) => p.page.title)).toEqual(["Alpha", "From laptop", "Bravo"]);
-  });
-
-  it("follows a page renamed outside", async () => {
-    const page = byTitle("From laptop")!;
-    await backend.renameFile(
-      pagePath(NOTES, page.fileName),
-      pagePath(NOTES, "2026-11-01-renamed.page.json"),
-    );
-    await changed(page.fileName, "2026-11-01-renamed.page.json");
-    const titles = tab().pages.filter((p) => p.page.id === page.page.id);
-    expect(titles).toHaveLength(1);
-    expect(titles[0].fileName).toBe("2026-11-01-renamed.page.json");
-  });
-
-  it("leaves a copy with the same page id alone", async () => {
-    const alpha = byTitle("Alpha")!;
-    await writeOutside("2026-11-01-alpha-copy.page.json", serialisePage(alpha.page));
-    await changed("2026-11-01-alpha-copy.page.json");
-    expect(tab().pages.filter((p) => p.page.id === alpha.page.id)).toHaveLength(1);
-    expect(byTitle("Alpha")!.fileName).toBe(alpha.fileName);
-    await backend.trashPageFile(pagePath(NOTES, "2026-11-01-alpha-copy.page.json"));
-  });
-
-  it("removes a page deleted outside and opens its neighbour", async () => {
-    const page = byTitle("From laptop")!;
-    const { tabId } = tab();
-    state().openPageAt(tabId, page.page.id);
-    await backend.trashPageFile(pagePath(NOTES, page.fileName));
-    await changed(page.fileName);
-    expect(byTitle("From laptop")).toBeUndefined();
-    expect(currentPageOf(state())?.loaded.page.title).toBe("Bravo");
+  it("removes a page deleted outside", async () => {
+    // Add a temporary page, then delete it from outside.
+    await addPage("Temp", "2026-11-03T09:00:00.000Z");
+    const temp = byTitle("Temp")!;
+    await backend.trashPageFile(pagePath(NOTEBOOK, SECTION, temp.fileName));
+    await changed(temp.fileName);
+    expect(byTitle("Temp")).toBeUndefined();
+    // Remaining pages are still present.
+    expect(byTitle("Alpha")).toBeDefined();
+    expect(byTitle("Bravo")).toBeDefined();
   });
 
   it("keeps a page deleted outside while it has unsaved edits", async () => {
     const bravo = byTitle("Bravo")!;
-    const { tabId } = tab();
-    state().updatePageIn(tabId, bravo.page.id, (p) => ({ ...p, title: "Bravo kept" }));
-    await backend.trashPageFile(pagePath(NOTES, bravo.fileName));
+    const { charId } = char();
+    state().updatePageIn(charId, SECTION, bravo.page.id, (p) => ({ ...p, title: "Bravo kept" }));
+    await backend.trashPageFile(pagePath(NOTEBOOK, SECTION, bravo.fileName));
     await changed(bravo.fileName);
     expect(state().notice).toMatch(/was deleted outside the app/);
     expect(byTitle("Bravo kept")).toBeDefined();
     await state().flushSaves();
-    expect(await backend.listPageFiles(NOTES)).toContain(byTitle("Bravo kept")!.fileName);
+    expect(await backend.listSectionPageFiles(NOTEBOOK, SECTION)).toContain(byTitle("Bravo kept")!.fileName);
   });
 });

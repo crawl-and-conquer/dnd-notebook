@@ -6,13 +6,13 @@ import { invoke } from "@tauri-apps/api/core";
  * stand-in is used so the chrome can be previewed. It never touches disk.
  */
 export type PrepareStatus = "created" | "existing" | "foreign";
-export type PrepareResult = { status: PrepareStatus; notesPath: string };
-export type MoveNotesResult = {
-  /** `<new folder>/notes` */
-  notesPath: string;
+export type PrepareResult = { status: PrepareStatus; notebookPath: string };
+export type MoveNotebookResult = {
+  /** `<new folder>/notebook` */
+  notebookPath: string;
   /** Files copied and verified. */
   files: number;
-  /** Why the old notes folder could not go to the Recycle Bin, if it could not. */
+  /** Why the old notebook folder could not go to the Recycle Bin, if it could not. */
   oldLeftBehind: string | null;
 };
 
@@ -21,17 +21,22 @@ export interface Backend {
   readAppConfig(): Promise<string | null>;
   writeAppConfig(contents: string): Promise<void>;
   appConfigPath(): Promise<string>;
-  /** Other small app-data files, such as the catch-up summary. */
+  /** Other small app-data files, such as the AI summary cache. */
   readAppFile(name: string): Promise<string | null>;
   writeAppFile(name: string, contents: string): Promise<void>;
   pathExists(path: string): Promise<boolean>;
-  prepareClientFolder(
+  /**
+   * Creates (or checks) `<folder>/notebook` with the character's default section dirs.
+   * Returns "created", "existing" (this app's folder) or "foreign" (someone else's folder).
+   */
+  prepareCharacterFolder(
     folder: string,
     name: string,
-    colour: string,
+    cover: string,
     allowForeign: boolean,
   ): Promise<PrepareResult>;
-  listPageFiles(notesPath: string): Promise<string[]>;
+  /** File names (not paths) of every `*.page.json` in `<notebook>/pages/<sectionId>`. */
+  listSectionPageFiles(notebookPath: string, sectionId: string): Promise<string[]>;
   readTextFile(path: string): Promise<string>;
   writeTextAtomic(path: string, contents: string): Promise<void>;
   /** Renames a file; fails if the target exists. */
@@ -40,23 +45,23 @@ export interface Backend {
   trashPageFile(path: string): Promise<void>;
   openInExplorer(path: string): Promise<void>;
   /**
-   * Copies a notes folder into `<toFolder>/notes`, verifies every file, then moves the old
+   * Copies a notebook folder into `<toFolder>/notebook`, verifies every file, then moves the old
    * folder to the Recycle Bin. On any failure before that, the original is untouched.
    */
-  moveNotes(fromNotes: string, toFolder: string): Promise<MoveNotesResult>;
-  /** Keeps the name and colour in this app's `notebook.json` in step (other apps' files are left alone). */
-  updateNotebookMeta(notesPath: string, name: string, colour: string): Promise<void>;
-  /** Starts watching `<notes>/pages`; changes arrive as `notes-changed` events. */
-  watchNotesFolder(notesPath: string): Promise<void>;
-  unwatchNotesFolder(notesPath: string): Promise<void>;
-  /** Saves PNG bytes (base64) into `<notes>/assets`, de-duplicated; returns `assets/<sha256>.png`. */
-  saveAsset(notesPath: string, pngBase64: string): Promise<string>;
-  readAsset(notesPath: string, rel: string): Promise<ArrayBuffer>;
+  moveNotebook(fromNotebook: string, toFolder: string): Promise<MoveNotebookResult>;
+  /** Keeps the name and cover colour in `character.json` in step with app config. */
+  updateCharacterMeta(notebookPath: string, name: string, cover: string): Promise<void>;
+  /** Starts watching each `<notebook>/pages/<sectionId>`; changes arrive as `notes-changed` events. */
+  watchNotebookFolder(notebookPath: string): Promise<void>;
+  unwatchNotebookFolder(notebookPath: string): Promise<void>;
+  /** Saves PNG bytes (base64) into `<notebook>/assets`, de-duplicated; returns `assets/<sha256>.png`. */
+  saveAsset(notebookPath: string, pngBase64: string): Promise<string>;
+  readAsset(notebookPath: string, rel: string): Promise<ArrayBuffer>;
   /** Export: a fresh `notebook-export-<date>` folder in `dest`, then files inside it only. */
   exportPrepareDir(dest: string, date: string): Promise<string>;
   exportWrite(root: string, rel: string, base64: string): Promise<void>;
   exportWriteText(root: string, rel: string, text: string): Promise<void>;
-  exportCopyAsset(notesPath: string, asset: string, root: string, rel: string): Promise<void>;
+  exportCopyAsset(notebookPath: string, asset: string, root: string, rel: string): Promise<void>;
   /** API keys: saved to the OS credential store. Only the last four characters ever come back. */
   keyStatus(provider: string): Promise<string | null>;
   saveKey(provider: string, key: string): Promise<string>;
@@ -72,27 +77,28 @@ const tauriBackend: Backend = {
   readAppFile: (name) => invoke<string | null>("read_app_file", { name }),
   writeAppFile: (name, contents) => invoke("write_app_file", { name, contents }),
   pathExists: (path) => invoke<boolean>("path_exists", { path }),
-  prepareClientFolder: (folder, name, colour, allowForeign) =>
-    invoke<PrepareResult>("prepare_client_folder", { folder, name, colour, allowForeign }),
-  listPageFiles: (notesPath) => invoke<string[]>("list_page_files", { notesPath }),
+  prepareCharacterFolder: (folder, name, cover, allowForeign) =>
+    invoke<PrepareResult>("prepare_character_folder", { folder, name, cover, allowForeign }),
+  listSectionPageFiles: (notebookPath, sectionId) =>
+    invoke<string[]>("list_section_page_files", { notebookPath, sectionId }),
   readTextFile: (path) => invoke<string>("read_text_file", { path }),
   writeTextAtomic: (path, contents) => invoke("write_text_atomic", { path, contents }),
   renameFile: (from, to) => invoke("rename_file", { from, to }),
   trashPageFile: (path) => invoke("trash_page_file", { path }),
   openInExplorer: (path) => invoke("open_in_explorer", { path }),
-  moveNotes: (fromNotes, toFolder) =>
-    invoke<MoveNotesResult>("move_notes", { fromNotes, toFolder }),
-  updateNotebookMeta: (notesPath, name, colour) =>
-    invoke("update_notebook_meta", { notesPath, name, colour }),
-  watchNotesFolder: (notesPath) => invoke("watch_notes_folder", { notesPath }),
-  unwatchNotesFolder: (notesPath) => invoke("unwatch_notes_folder", { notesPath }),
-  saveAsset: (notesPath, dataBase64) => invoke<string>("save_asset", { notesPath, dataBase64 }),
-  readAsset: (notesPath, rel) => invoke<ArrayBuffer>("read_asset", { notesPath, rel }),
+  moveNotebook: (fromNotebook, toFolder) =>
+    invoke<MoveNotebookResult>("move_notebook", { fromNotebook, toFolder }),
+  updateCharacterMeta: (notebookPath, name, cover) =>
+    invoke("update_character_meta", { notebookPath, name, cover }),
+  watchNotebookFolder: (notebookPath) => invoke("watch_notebook_folder", { notebookPath }),
+  unwatchNotebookFolder: (notebookPath) => invoke("unwatch_notebook_folder", { notebookPath }),
+  saveAsset: (notebookPath, dataBase64) => invoke<string>("save_asset", { notebookPath, dataBase64 }),
+  readAsset: (notebookPath, rel) => invoke<ArrayBuffer>("read_asset", { notebookPath, rel }),
   exportPrepareDir: (dest, date) => invoke<string>("export_prepare_dir", { dest, date }),
   exportWrite: (root, rel, dataBase64) => invoke("export_write", { root, rel, dataBase64 }),
   exportWriteText: (root, rel, text) => invoke("export_write_text", { root, rel, text }),
-  exportCopyAsset: (notesPath, asset, root, rel) =>
-    invoke("export_copy_asset", { notesPath, asset, root, rel }),
+  exportCopyAsset: (notebookPath, asset, root, rel) =>
+    invoke("export_copy_asset", { notebookPath, asset, root, rel }),
   keyStatus: (provider) => invoke<string | null>("key_status", { provider }),
   saveKey: (provider, key) => invoke<string>("save_key", { provider, key }),
   removeKey: (provider) => invoke("remove_key", { provider }),
@@ -114,7 +120,7 @@ function createMemoryBackend(): Backend {
   const assets = new Map<string, ArrayBuffer>();
   const appFiles = new Map<string, string>();
   const keys = new Map<string, string>();
-  const dirs = new Set<string>(["C:/Demo/Grade A Technology"]);
+  const dirs = new Set<string>(["C:/Demo/Dawnrunner"]);
   let config: string | null = null;
   return {
     isTauri: false,
@@ -128,19 +134,22 @@ function createMemoryBackend(): Backend {
       appFiles.set(name, contents);
     },
     pathExists: async (p) => dirs.has(p) || files.has(p),
-    prepareClientFolder: async (folder) => {
-      const notesPath = `${folder}/notes`;
-      const status: PrepareStatus = dirs.has(notesPath) ? "existing" : "created";
+    prepareCharacterFolder: async (folder) => {
+      const notebookPath = `${folder}/notebook`;
+      const status: PrepareStatus = dirs.has(notebookPath) ? "existing" : "created";
       dirs.add(folder);
-      dirs.add(notesPath);
-      dirs.add(`${notesPath}/pages`);
-      return { status, notesPath };
+      dirs.add(notebookPath);
+      dirs.add(`${notebookPath}/pages`);
+      dirs.add(`${notebookPath}/assets`);
+      return { status, notebookPath };
     },
-    listPageFiles: async (notesPath) =>
-      [...files.keys()]
-        .filter((k) => k.startsWith(`${notesPath}/pages/`) && k.endsWith(".page.json"))
-        .map((k) => k.slice(`${notesPath}/pages/`.length))
-        .sort(),
+    listSectionPageFiles: async (notebookPath, sectionId) => {
+      const prefix = `${notebookPath}/pages/${sectionId}/`;
+      return [...files.keys()]
+        .filter((k) => k.startsWith(prefix) && k.endsWith(".page.json"))
+        .map((k) => k.slice(prefix.length))
+        .sort();
+    },
     readTextFile: async (p) => {
       const v = files.get(p);
       if (v === undefined) throw new Error(`File not found: ${p}`);
@@ -164,41 +173,41 @@ function createMemoryBackend(): Backend {
       files.delete(`${p}.bak`);
     },
     openInExplorer: async () => undefined,
-    updateNotebookMeta: async () => undefined,
+    updateCharacterMeta: async () => undefined,
     // Browser preview: moves the in-memory files (there is no Recycle Bin to use).
-    moveNotes: async (fromNotes, toFolder) => {
-      const toNotes = `${toFolder}/notes`;
-      if ([...files.keys()].some((k) => k.startsWith(`${toNotes}/`))) {
-        throw new Error(`${toNotes} already exists and is not empty.`);
+    moveNotebook: async (fromNotebook, toFolder) => {
+      const toNotebook = `${toFolder}/notebook`;
+      if ([...files.keys()].some((k) => k.startsWith(`${toNotebook}/`))) {
+        throw new Error(`${toNotebook} already exists and is not empty.`);
       }
-      const moving = [...files.keys()].filter((k) => k.startsWith(`${fromNotes}/`));
+      const moving = [...files.keys()].filter((k) => k.startsWith(`${fromNotebook}/`));
       for (const k of moving) {
-        files.set(toNotes + k.slice(fromNotes.length), files.get(k) as string);
+        files.set(toNotebook + k.slice(fromNotebook.length), files.get(k) as string);
         files.delete(k);
       }
       for (const [k, v] of [...assets]) {
-        if (!k.startsWith(`${fromNotes}/`)) continue;
-        assets.set(toNotes + k.slice(fromNotes.length), v);
+        if (!k.startsWith(`${fromNotebook}/`)) continue;
+        assets.set(toNotebook + k.slice(fromNotebook.length), v);
         assets.delete(k);
       }
       for (const d of [...dirs]) {
-        if (d === fromNotes || d.startsWith(`${fromNotes}/`)) {
+        if (d === fromNotebook || d.startsWith(`${fromNotebook}/`)) {
           dirs.delete(d);
-          dirs.add(toNotes + d.slice(fromNotes.length));
+          dirs.add(toNotebook + d.slice(fromNotebook.length));
         }
       }
       dirs.add(toFolder);
-      return { notesPath: toNotes, files: moving.length, oldLeftBehind: null };
+      return { notebookPath: toNotebook, files: moving.length, oldLeftBehind: null };
     },
     // Nothing changes outside the app in the browser preview.
-    watchNotesFolder: async () => undefined,
-    unwatchNotesFolder: async () => undefined,
-    saveAsset: async (notesPath, b64) => {
+    watchNotebookFolder: async () => undefined,
+    unwatchNotebookFolder: async () => undefined,
+    saveAsset: async (notebookPath, b64) => {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       const digest = await crypto.subtle.digest("SHA-256", bytes);
       const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
       const rel = `assets/${hex}.png`;
-      assets.set(`${notesPath}/${rel}`, bytes.buffer);
+      assets.set(`${notebookPath}/${rel}`, bytes.buffer);
       return rel;
     },
     exportPrepareDir: async (dest, date) => {
@@ -212,8 +221,8 @@ function createMemoryBackend(): Backend {
     exportWriteText: async (root, rel, text) => {
       files.set(`${root}/${rel}`, text);
     },
-    exportCopyAsset: async (notesPath, asset, root, rel) => {
-      const v = assets.get(`${notesPath}/${asset}`);
+    exportCopyAsset: async (notebookPath, asset, root, rel) => {
+      const v = assets.get(`${notebookPath}/${asset}`);
       if (v) assets.set(`${root}/${rel}`, v);
     },
     // Browser preview only: keeps the last four characters, never the key.
@@ -225,13 +234,13 @@ function createMemoryBackend(): Backend {
     removeKey: async (p) => {
       keys.delete(p);
     },
-    readAsset: async (notesPath, rel) => {
-      const v = assets.get(`${notesPath}/${rel}`);
+    readAsset: async (notebookPath, rel) => {
+      const v = assets.get(`${notebookPath}/${rel}`);
       if (!v) throw new Error(`Asset not found: ${rel}`);
       return v;
     },
     chooseFolder: async () =>
-      window.prompt("Folder path (browser preview)", "C:/Demo/Grade A Technology"),
+      window.prompt("Folder path (browser preview)", "C:/Demo/Dawnrunner"),
   };
 }
 

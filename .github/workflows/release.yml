@@ -43,9 +43,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "DnD Notebook ${{ github.ref_name }}"
+          releaseName: "Adventurer's Notebook ${{ github.ref_name }}"
           releaseBody: |
-            Download **DnD.Notebook_*_x64-setup.exe** below and run it.
+            Download **Adventurers.Notebook_*_x64-setup.exe** below and run it.
             Windows SmartScreen will warn because the installer is not code-signed: choose More info, then Run anyway.
             Once installed, the app updates itself from new releases.
           releaseDraft: true

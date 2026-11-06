@@ -163,7 +163,7 @@ const providers = [
     id: "openrouter",
     label: "OpenRouter",
     model: "Mock Vision",
-    auth: (h, k) => h.authorization === `Bearer ${k}` && h["x-title"] === "DnD Notebook",
+    auth: (h, k) => h.authorization === `Bearer ${k}` && h["x-title"] === "Adventurer's Notebook",
   },
   {
     id: "openai",

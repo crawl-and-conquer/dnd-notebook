@@ -5,10 +5,17 @@ export function joinPath(first: string, ...rest: string[]): string {
   return [trimmed, ...rest.map((p) => p.replace(/^[\\/]+|[\\/]+$/g, ""))].join(sep);
 }
 
-export function notesPathFor(folder: string): string {
-  return joinPath(folder, "notes");
+/** `<folder>/notebook` — the notebook subfolder inside a character's chosen folder. */
+export function notebookPathFor(folder: string): string {
+  return joinPath(folder, "notebook");
 }
 
-export function pagePath(notesPath: string, fileName: string): string {
-  return joinPath(notesPath, "pages", fileName);
+/** `<notebookPath>/pages/<sectionId>` — pages folder for one section. */
+export function sectionPagesDir(notebookPath: string, sectionId: string): string {
+  return joinPath(notebookPath, "pages", sectionId);
+}
+
+/** Full path to a page file: `<notebookPath>/pages/<sectionId>/<fileName>`. */
+export function pagePath(notebookPath: string, sectionId: string, fileName: string): string {
+  return joinPath(notebookPath, "pages", sectionId, fileName);
 }

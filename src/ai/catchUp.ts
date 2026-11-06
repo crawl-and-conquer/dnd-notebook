@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { backend } from "../storage/backend";
-import { useNotebook, visibleTabs } from "../store/notebook";
+import { useNotebook, visibleCharacters } from "../store/notebook";
 import { AiRequestError, createProvider, listModelsCached, type AiErrorKind } from "./client";
 import { bytesToBase64, renderPagePng } from "../export/render";
 import { buildCatchUpContext, type CatchUpContext, type Ref } from "./payload";
@@ -45,12 +45,14 @@ async function pageSnapshots(
     .catch(() => false);
   if (!vision) return { images: [], note: "", skipped: "the model does not take images" };
 
-  const pages = visibleTabs(s.config)
-    .filter((t) => !t.excludeFromAi && (!tabId || t.id === tabId))
-    .flatMap((tab) => {
-      const st = s.tabs[tab.id];
-      return st?.status === "ok"
-        ? st.pages.map((p) => ({ tab, notesPath: st.notesPath, page: p.page }))
+  const pages = visibleCharacters(s.config)
+    .filter((c) => !c.excludeFromAi && (!tabId || c.id === tabId))
+    .flatMap((char) => {
+      const ch = s.characters[char.id];
+      return ch?.status === "ok"
+        ? Object.values(ch.sectionPages)
+            .flat()
+            .map((p) => ({ tab: char, notebookPath: ch.notebookPath, page: p.page }))
         : [];
     })
     .sort((a, b) => b.page.updatedAt.localeCompare(a.page.updatedAt))
@@ -58,8 +60,8 @@ async function pageSnapshots(
 
   const images: string[] = [];
   const names: string[] = [];
-  for (const { tab, notesPath, page } of pages) {
-    const png = await renderPagePng(page, notesPath, {
+  for (const { tab, notebookPath, page } of pages) {
+    const png = await renderPagePng(page, notebookPath, {
       theme: "screen",
       pixelRatio: 1,
       includeImages: true,
@@ -106,10 +108,10 @@ let chatContext: CatchUpContext | null = null;
 /** Builds the payload from what is loaded, honouring Exclude from AI. */
 export function currentContext(tabId: string, lookAheadDays: number): CatchUpContext {
   const s = useNotebook.getState();
-  const tabs = visibleTabs(s.config).flatMap((tab) => {
-    const st = s.tabs[tab.id];
-    return st?.status === "ok"
-      ? [{ tab, pages: st.pages.map((p) => p.page) }]
+  const tabs = visibleCharacters(s.config).flatMap((char) => {
+    const ch = s.characters[char.id];
+    return ch?.status === "ok"
+      ? [{ tab: char, pages: Object.values(ch.sectionPages).flat().map((p) => p.page) }]
       : [];
   });
   return buildCatchUpContext({

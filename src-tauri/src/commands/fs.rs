@@ -368,7 +368,122 @@ pub fn rename_file(from: String, to: String) -> Result<(), String> {
     rename_no_clobber(Path::new(&from), Path::new(&to))
 }
 
-/// Only a `*.page.json` file directly inside `<notes>/pages` may be moved to the bin.
+/// Checks whether the notebook folder looks like ours (has our character.json marker).
+pub fn is_our_character_notebook(notebook: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(notebook.join("character.json")) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    v.get("app").and_then(|a| a.as_str()) == Some(APP_MARKER)
+}
+
+/// Creates (or checks) `<folder>/notebook/` with section dirs, then writes `character.json`.
+pub fn prepare_character(
+    folder: &Path,
+    name: &str,
+    cover: &str,
+    allow_foreign: bool,
+) -> Result<PrepareResult, String> {
+    if !folder.is_dir() {
+        return Err(format!("Folder not found: {}", folder.display()));
+    }
+    let notebook = folder.join("notebook");
+    let notebook_path = notebook.to_string_lossy().to_string();
+
+    if notebook.exists() {
+        if is_our_character_notebook(&notebook) {
+            fs::create_dir_all(notebook.join("assets")).map_err(err)?;
+            return Ok(PrepareResult { status: "existing".into(), notebook_path });
+        }
+        if !allow_foreign {
+            return Ok(PrepareResult { status: "foreign".into(), notebook_path });
+        }
+        if notebook.join("character.json").exists() {
+            return Err("This notebook folder already has a character.json from another app. Choose a different folder.".into());
+        }
+    }
+
+    // Default section ids (must match src/model/character.ts DEFAULT_SECTIONS).
+    let section_ids = ["sessions", "backstory", "likes", "dislikes", "wants", "notes", "sheet"];
+    for sid in section_ids {
+        fs::create_dir_all(notebook.join("pages").join(sid)).map_err(err)?;
+    }
+    fs::create_dir_all(notebook.join("assets")).map_err(err)?;
+
+    let character = serde_json::json!({
+        "app": APP_MARKER,
+        "schemaVersion": 1,
+        "name": name,
+        "cover": cover,
+    });
+    let text = serde_json::to_string_pretty(&character).map_err(err)?;
+    atomic_write(&notebook.join("character.json"), text.as_bytes())?;
+    Ok(PrepareResult { status: "created".into(), notebook_path })
+}
+
+#[tauri::command]
+pub fn prepare_character_folder(
+    folder: String,
+    name: String,
+    cover: String,
+    allow_foreign: bool,
+) -> Result<PrepareResult, String> {
+    prepare_character(Path::new(&folder), &name, &cover, allow_foreign)
+}
+
+/// File names (not paths) of every `*.page.json` in `<notebook>/pages/<sectionId>`.
+#[tauri::command]
+pub fn list_section_page_files(
+    notebook_path: String,
+    section_id: String,
+) -> Result<Vec<String>, String> {
+    if section_id.contains(['/', '\\', '.']) {
+        return Err(format!("Invalid section id: {section_id}"));
+    }
+    let pages = Path::new(&notebook_path).join("pages").join(&section_id);
+    if !pages.is_dir() {
+        return Err(format!("Folder not found: {}", pages.display()));
+    }
+    let mut out: Vec<String> = fs::read_dir(&pages)
+        .map_err(err)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".page.json"))
+        .collect();
+    out.sort();
+    Ok(out)
+}
+
+/// Keeps the name and cover colour in this app's `character.json` in step with the app config.
+pub fn update_character_meta_in(notebook: &Path, name: &str, cover: &str) -> Result<(), String> {
+    if !is_our_character_notebook(notebook) {
+        return Ok(());
+    }
+    let path = notebook.join("character.json");
+    let text = fs::read_to_string(&path).map_err(err)?;
+    let mut v: serde_json::Value = serde_json::from_str(&text).map_err(err)?;
+    let Some(obj) = v.as_object_mut() else { return Ok(()) };
+    obj.insert("name".into(), serde_json::Value::String(name.into()));
+    obj.insert("cover".into(), serde_json::Value::String(cover.into()));
+    let out = serde_json::to_string_pretty(&v).map_err(err)?;
+    if out != text {
+        atomic_write(&path, out.as_bytes())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_character_meta(
+    notebook_path: String,
+    name: String,
+    cover: String,
+) -> Result<(), String> {
+    update_character_meta_in(Path::new(&notebook_path), &name, &cover)
+}
+
+/// Only a `*.page.json` file directly inside `<notebook>/pages/<sectionId>` may be moved to the bin.
 pub fn check_page_file(path: &Path) -> Result<(), String> {
     use std::path::Component;
     let bad = || format!("Not a page file: {}", path.display());
@@ -376,14 +491,23 @@ pub fn check_page_file(path: &Path) -> Result<(), String> {
         return Err(bad());
     }
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let pages = path.parent();
-    let notes = pages.and_then(Path::parent);
+    // Expected: <notebook>/pages/<sectionId>/<file>.page.json
+    let section_dir = path.parent();
+    let pages_dir = section_dir.and_then(Path::parent);
+    let notebook = pages_dir.and_then(Path::parent);
     let named = |p: Option<&Path>, want: &str| {
         p.and_then(Path::file_name).map(|n| n == want).unwrap_or(false)
     };
-    if !name.ends_with(".page.json") || !named(pages, "pages") || !named(notes, "notes") {
+    // section_dir name is any non-empty string without separators
+    let section_ok = section_dir
+        .and_then(Path::file_name)
+        .and_then(|n| n.to_str())
+        .map(|n| !n.is_empty() && !n.starts_with('.') && !n.contains(['/', '\\']))
+        .unwrap_or(false);
+    if !name.ends_with(".page.json") || !named(pages_dir, "pages") || !section_ok {
         return Err(bad());
     }
+    let _ = notebook;
     if !path.is_file() {
         return Err(format!("File not found: {}", path.display()));
     }

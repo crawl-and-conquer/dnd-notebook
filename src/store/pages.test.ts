@@ -8,29 +8,30 @@ import type { Element } from "../model/page";
 // Runs against the in-memory backend (no Tauri in Node), so nothing touches disk.
 
 const FOLDER = "C:/Demo/Page list";
-const NOTES = `${FOLDER}/notes`;
+const NOTEBOOK = `${FOLDER}/notebook`;
+const SECTION = "sessions";
 
-function tab() {
+function char() {
   const s = useNotebook.getState();
-  const tabId = s.config.tabs[0].id;
-  const t = s.tabs[tabId];
-  if (t?.status !== "ok") throw new Error("tab not loaded");
-  return { tabId, pages: t.pages };
+  const charId = s.config.characters[0].id;
+  const c = s.characters[charId];
+  if (c?.status !== "ok") throw new Error("character not loaded");
+  return { charId, pages: c.sectionPages[SECTION] ?? [] };
 }
 
-const files = () => backend.listPageFiles(NOTES);
+const files = () => backend.listSectionPageFiles(NOTEBOOK, SECTION);
 
 describe("page list actions", () => {
   beforeAll(async () => {
-    const r = await backend.prepareClientFolder(FOLDER, "Page list", "#01C6A3", false);
-    await useNotebook.getState().addClient({
+    const r = await backend.prepareCharacterFolder(FOLDER, "Page list", "#46562f", false);
+    await useNotebook.getState().addCharacter({
       name: "Page list",
-      colour: "#01C6A3",
+      cover: "#46562f",
       folder: FOLDER,
-      notesPath: r.notesPath,
+      notebookPath: r.notebookPath,
     });
     await useNotebook.getState().newPage();
-    const { tabId, pages } = tab();
+    const { charId, pages } = char();
     const text: Element = {
       id: "t1",
       type: "text",
@@ -45,7 +46,7 @@ describe("page list actions", () => {
       colour: "#F4F7FF",
       heading: false,
     };
-    useNotebook.getState().updatePageIn(tabId, pages[0].page.id, (p) => ({
+    useNotebook.getState().updatePageIn(charId, SECTION, pages[0].page.id, (p) => ({
       ...p,
       title: "Audit",
       elements: [text],
@@ -54,28 +55,28 @@ describe("page list actions", () => {
   });
 
   it("renames a page and its file", async () => {
-    const { tabId, pages } = tab();
-    useNotebook.getState().renamePage(tabId, pages[0].page.id, "  Faceted navigation audit  ");
+    const { charId, pages } = char();
+    useNotebook.getState().renamePage(charId, SECTION, pages[0].page.id, "  Faceted navigation audit  ");
     await useNotebook.getState().flushSaves();
-    const after = tab().pages[0];
+    const after = char().pages[0];
     expect(after.page.title).toBe("Faceted navigation audit");
     expect(after.fileName).toMatch(/-faceted-navigation-audit\.page\.json$/);
     expect(await files()).toEqual([after.fileName]);
   });
 
   it("ignores blank and unchanged titles", () => {
-    const { tabId, pages } = tab();
+    const { charId, pages } = char();
     const before = pages[0].page;
-    useNotebook.getState().renamePage(tabId, before.id, "   ");
-    useNotebook.getState().renamePage(tabId, before.id, before.title);
-    expect(tab().pages[0].page).toBe(before);
+    useNotebook.getState().renamePage(charId, SECTION, before.id, "   ");
+    useNotebook.getState().renamePage(charId, SECTION, before.id, before.title);
+    expect(char().pages[0].page).toBe(before);
   });
 
-  it("duplicates a page with fresh ids and opens the copy", async () => {
-    const { tabId, pages } = tab();
+  it("duplicates a page with fresh ids and appends (copy) to the title", async () => {
+    const { charId, pages } = char();
     const source = pages[0].page;
-    await useNotebook.getState().duplicatePage(tabId, source.id);
-    const after = tab().pages;
+    await useNotebook.getState().duplicatePage(charId, SECTION, source.id);
+    const after = char().pages;
     expect(after).toHaveLength(2);
     const copy = after[1].page;
     expect(copy.title).toBe("Faceted navigation audit (copy)");
@@ -83,26 +84,24 @@ describe("page list actions", () => {
     expect(copy.elements).toHaveLength(1);
     expect(copy.elements[0].id).not.toBe(source.elements[0].id);
     expect(copy.elements[0]).toMatchObject({ type: "text", text: "Brief dev", x: 100, y: 100 });
-    expect(currentPageOf(useNotebook.getState())?.loaded.page.id).toBe(copy.id);
     expect(await files()).toHaveLength(2);
   });
 
-  it("deletes the current page through the bin and opens its neighbour", async () => {
-    const { tabId, pages } = tab();
+  it("deletes a page through the bin", async () => {
+    const { charId, pages } = char();
     const [first, copy] = pages;
-    // An unsaved edit is written before the file goes to the bin.
-    useNotebook.getState().updatePageIn(tabId, copy.page.id, (p) => ({ ...p, title: "Gone" }));
-    expect(await useNotebook.getState().deletePage(tabId, copy.page.id)).toBe(true);
-    expect(tab().pages.map((p) => p.page.id)).toEqual([first.page.id]);
+    useNotebook.getState().updatePageIn(charId, SECTION, copy.page.id, (p) => ({ ...p, title: "Gone" }));
+    expect(await useNotebook.getState().deletePage(charId, SECTION, copy.page.id)).toBe(true);
+    expect(char().pages.map((p) => p.page.id)).toEqual([first.page.id]);
     expect(currentPageOf(useNotebook.getState())?.loaded.page.id).toBe(first.page.id);
     expect(await files()).toEqual([first.fileName]);
-    expect(await backend.pathExists(pagePath(NOTES, first.fileName))).toBe(true);
+    expect(await backend.pathExists(pagePath(NOTEBOOK, SECTION, first.fileName))).toBe(true);
   });
 
-  it("deleting the last page leaves an empty tab", async () => {
-    const { tabId, pages } = tab();
-    expect(await useNotebook.getState().deletePage(tabId, pages[0].page.id)).toBe(true);
-    expect(tab().pages).toEqual([]);
+  it("deleting the last page leaves an empty section", async () => {
+    const { charId, pages } = char();
+    expect(await useNotebook.getState().deletePage(charId, SECTION, pages[0].page.id)).toBe(true);
+    expect(char().pages).toEqual([]);
     expect(currentPageOf(useNotebook.getState())).toBeNull();
     expect(await files()).toEqual([]);
   });

@@ -1,8 +1,8 @@
 import { format } from "date-fns";
-import type { ExportSettings, TabConfig } from "../model/config";
+import type { CharacterConfig, ExportSettings } from "../model/config";
 import { backend } from "../storage/backend";
 import type { LoadedPage } from "../storage/notebook";
-import { useNotebook, visibleTabs } from "../store/notebook";
+import { useNotebook, visibleCharacters } from "../store/notebook";
 import { cssVar } from "../canvas/theme";
 import { pageToMarkdown, snapshotPath } from "./markdown";
 import { pageBase, safeName, uniqueNamer } from "./names";
@@ -19,6 +19,7 @@ export type ExportScope = "all" | "tab" | "page";
 
 export type ExportOptions = Omit<ExportSettings, "destination"> & {
   scope: ExportScope;
+  /** Character id (kept as "tabId" for interface compatibility). */
   tabId?: string;
   pageId?: string;
   destination: string;
@@ -27,18 +28,19 @@ export type ExportOptions = Omit<ExportSettings, "destination"> & {
 export type ExportProgress = { done: number; total: number; label: string };
 export type ExportResult = { root: string; pages: number; files: number; cancelled: boolean };
 
-type Target = { tab: TabConfig; notesPath: string; pages: LoadedPage[] };
+type Target = { tab: CharacterConfig; notebookPath: string; pages: LoadedPage[] };
 
-/** Which tabs and pages an export covers, from what is loaded. */
+/** Which characters and pages an export covers, from what is loaded. */
 export function exportTargets(scope: ExportScope, tabId?: string, pageId?: string): Target[] {
   const s = useNotebook.getState();
-  return visibleTabs(s.config)
-    .filter((t) => scope === "all" || t.id === tabId)
+  return visibleCharacters(s.config)
+    .filter((c) => scope === "all" || c.id === tabId)
     .flatMap((tab) => {
-      const st = s.tabs[tab.id];
-      if (st?.status !== "ok") return [];
-      const pages = scope === "page" ? st.pages.filter((p) => p.page.id === pageId) : st.pages;
-      return pages.length ? [{ tab, notesPath: st.notesPath, pages }] : [];
+      const ch = s.characters[tab.id];
+      if (ch?.status !== "ok") return [];
+      const allPages = Object.values(ch.sectionPages).flat();
+      const pages = scope === "page" ? allPages.filter((p) => p.page.id === pageId) : allPages;
+      return pages.length ? [{ tab, notebookPath: ch.notebookPath, pages }] : [];
     });
 }
 
@@ -99,7 +101,7 @@ export async function runExport(
       const base = pageBase(loaded.fileName);
       onProgress({ done, total, label: `${target.tab.name}: ${page.title || "Untitled page"}` });
 
-      const png = await renderPagePng(page, target.notesPath, {
+      const png = await renderPagePng(page, target.notebookPath, {
         theme: opts.printerFriendly ? "print" : "screen",
         pixelRatio: 2,
         includeImages: opts.includeImages,
@@ -117,7 +119,7 @@ export async function runExport(
         if (opts.includeImages) {
           await writeBytes(`${dir}/${snapshotPath(base)}`, png);
           for (const asset of r.assets) {
-            await backend.exportCopyAsset(target.notesPath, asset, root, `${dir}/${asset}`);
+            await backend.exportCopyAsset(target.notebookPath, asset, root, `${dir}/${asset}`);
             files++;
           }
         }

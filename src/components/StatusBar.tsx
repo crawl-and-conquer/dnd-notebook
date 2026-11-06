@@ -29,7 +29,7 @@ function saveLabel(s: SaveState, now: number): string {
 export function StatusBar() {
   const cur = useNotebook(useShallow(currentPageOf));
   const save = useNotebook((s) => s.save);
-  const goToPage = useNotebook((s) => s.goToPage);
+  const goToSpreadDelta = useNotebook((s) => s.goToSpreadDelta);
   const newPage = useNotebook((s) => s.newPage);
   const pageListOpen = useNotebook((s) => s.pageListOpen);
   const setPageListOpen = useNotebook((s) => s.setPageListOpen);
@@ -51,7 +51,7 @@ export function StatusBar() {
             className="icon-button small"
             aria-label="Previous page"
             disabled={cur.index === 0}
-            onClick={() => goToPage(-1)}
+            onClick={() => goToSpreadDelta(-1)}
           >
             <ChevronLeftIcon size={16} />
           </button>
@@ -69,7 +69,7 @@ export function StatusBar() {
             className="icon-button small"
             aria-label="Next page"
             disabled={cur.index >= cur.count - 1}
-            onClick={() => goToPage(1)}
+            onClick={() => goToSpreadDelta(1)}
           >
             <ChevronRightIcon size={16} />
           </button>
@@ -83,7 +83,7 @@ export function StatusBar() {
           </button>
         </div>
       )}
-      {view.kind === "tab" && (
+      {"characterId" in view && (
         <span>
           {general.lockToGrid ? `Snapping to ${general.gridSize} px grid` : "Grid snapping off"}
         </span>

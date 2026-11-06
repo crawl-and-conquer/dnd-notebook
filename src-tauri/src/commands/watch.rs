@@ -38,16 +38,21 @@ struct NotesChanged {
     rescan: bool,
 }
 
-/// File names of `*.page.json` files directly inside a `pages` folder, sorted and de-duplicated.
-/// Temp files, `.bak` files and anything else are ignored.
+/// File names of `*.page.json` files in any direct subfolder of a `pages` folder,
+/// sorted and de-duplicated. Temp files, `.bak` files and anything else are ignored.
 pub fn page_file_names(paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
     let set: BTreeSet<String> = paths
         .into_iter()
         .filter(|p| {
+            // Allow both old `<notes>/pages/<file>` and new `<notebook>/pages/<sectionId>/<file>`
             p.parent()
                 .and_then(Path::file_name)
-                .map(|n| n == "pages")
+                .map(|n| n != "pages")  // parent is a section dir, not "pages" itself
                 .unwrap_or(false)
+                || p.parent()
+                    .and_then(Path::file_name)
+                    .map(|n| n == "pages")
+                    .unwrap_or(false)
         })
         .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_string))
         .filter(|n| n.ends_with(".page.json") && !n.starts_with('.'))
@@ -55,21 +60,22 @@ pub fn page_file_names(paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> 
     set.into_iter().collect()
 }
 
+/// Watch all section subdirectories under `<notebook>/pages/` (recursive on that folder).
 #[tauri::command]
-pub fn watch_notes_folder(
+pub fn watch_notebook_folder(
     app: AppHandle,
     state: State<'_, WatchState>,
-    notes_path: String,
+    notebook_path: String,
 ) -> Result<(), String> {
     let mut watchers = state.watchers.lock().map_err(|e| e.to_string())?;
-    if watchers.contains_key(&notes_path) {
+    if watchers.contains_key(&notebook_path) {
         return Ok(());
     }
-    let pages = Path::new(&notes_path).join("pages");
+    let pages = Path::new(&notebook_path).join("pages");
     if !pages.is_dir() {
         return Err(format!("Folder not found: {}", pages.display()));
     }
-    let key = notes_path.clone();
+    let key = notebook_path.clone();
     let mut debouncer = new_debouncer(DEBOUNCE, move |res: DebounceEventResult| {
         let payload = match res {
             Ok(events) => {
@@ -86,15 +92,15 @@ pub fn watch_notes_folder(
     .map_err(|e| format!("Could not watch {}: {e}", pages.display()))?;
     debouncer
         .watcher()
-        .watch(&pages, RecursiveMode::NonRecursive)
+        .watch(&pages, RecursiveMode::Recursive)
         .map_err(|e| format!("Could not watch {}: {e}", pages.display()))?;
-    watchers.insert(notes_path, debouncer);
+    watchers.insert(notebook_path, debouncer);
     Ok(())
 }
 
 #[tauri::command]
-pub fn unwatch_notes_folder(state: State<'_, WatchState>, notes_path: String) {
-    state.stop(&notes_path);
+pub fn unwatch_notebook_folder(state: State<'_, WatchState>, notebook_path: String) {
+    state.stop(&notebook_path);
 }
 
 #[cfg(test)]

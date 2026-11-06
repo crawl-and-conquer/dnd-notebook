@@ -42,9 +42,9 @@ function Dialog() {
   const defaults = useNotebook((s) => s.config.export);
   const view = useNotebook((s) => s.view);
   const cur = useNotebook(useShallow(currentPageOf));
-  const tabId = view.kind === "tab" ? view.tabId : undefined;
+  const tabId = "characterId" in view ? view.characterId : undefined;
   const pageId = cur?.loaded.page.id;
-  const tabName = useNotebook((s) => s.config.tabs.find((t) => t.id === tabId)?.name);
+  const tabName = useNotebook((s) => s.config.characters.find((c) => c.id === tabId)?.name);
 
   const [scope, setScope] = useState<ExportScope>(pageId ? "page" : tabId ? "tab" : "all");
   const [format, setFormat] = useState(defaults.format);

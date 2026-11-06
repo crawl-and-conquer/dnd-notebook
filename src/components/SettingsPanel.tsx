@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { INK_COLOURS, type TabConfig } from "../model/config";
+import { COVER_COLOURS } from "../model/character";
 import { backend } from "../storage/backend";
-import { notesPathFor } from "../storage/paths";
-import { useNotebook, visibleTabs } from "../store/notebook";
+import { notebookPathFor } from "../storage/paths";
+import { useNotebook, visibleCharacters } from "../store/notebook";
 import { CloseIcon, GripIcon } from "./Icons";
-import { ColourPicker } from "./ColourPicker";
+import { CoverPicker } from "./CoverPicker";
 import { useDragReorder } from "./useDragReorder";
 import { AiSection } from "./AiSettings";
 import { ExportSection } from "./ExportSettings";
 import { GeneralSection } from "./GeneralSettings";
 
-type Section = "clients" | "ai" | "export" | "general";
+type Section = "characters" | "ai" | "export" | "general";
 const SECTIONS: { id: Section; label: string }[] = [
-  { id: "clients", label: "Clients and folders" },
+  { id: "characters", label: "Characters and folders" },
   { id: "ai", label: "AI" },
   { id: "export", label: "Export" },
   { id: "general", label: "General" },
@@ -21,7 +21,7 @@ const SECTIONS: { id: Section; label: string }[] = [
 export function SettingsPanel() {
   const open = useNotebook((s) => s.settingsOpen);
   const setOpen = useNotebook((s) => s.setSettingsOpen);
-  const [section, setSection] = useState<Section>("clients");
+  const [section, setSection] = useState<Section>("characters");
 
   useEffect(() => {
     if (!open) return;
@@ -56,7 +56,7 @@ export function SettingsPanel() {
             ))}
           </nav>
           <div className="settings-section">
-            {section === "clients" && <ClientsSection />}
+            {section === "characters" && <CharactersSection />}
             {section === "ai" && <AiSection />}
             {section === "export" && <ExportSection />}
             {section === "general" && <GeneralSection />}
@@ -67,101 +67,63 @@ export function SettingsPanel() {
   );
 }
 
-function ClientsSection() {
+function CharactersSection() {
   const config = useNotebook((s) => s.config);
-  const tabs = useNotebook((s) => s.tabs);
+  const characters = useNotebook((s) => s.characters);
   const updateConfig = useNotebook((s) => s.updateConfig);
-  const changeFolder = useNotebook((s) => s.changeFolder);
-  const [adding, setAdding] = useState(config.tabs.length === 0);
+  const moveCharacter = useNotebook((s) => s.moveCharacter);
+  const [adding, setAdding] = useState(config.characters.length === 0);
   const [error, setError] = useState<string | null>(null);
-  const list = visibleTabs(config);
-  const ids = list.map((t) => t.id);
-  const archived = config.tabs
-    .filter((t) => t.archived)
+  const list = visibleCharacters(config);
+  const ids = list.map((c) => c.id);
+  const archived = config.characters
+    .filter((c) => c.archived)
     .sort((a, b) => a.name.localeCompare(b.name));
-  const moveTab = useNotebook((s) => s.moveTab);
-  const onMove = useCallback((id: string, slot: number) => void moveTab(id, slot), [moveTab]);
+  const onMove = useCallback(
+    (id: string, slot: number) => void moveCharacter(id, slot),
+    [moveCharacter],
+  );
   const { listRef, drag, start, onClickCapture, dropMark } = useDragReorder<HTMLDivElement>(onMove);
-
-  const [changing, setChanging] = useState<Changing | null>(null);
-
-  async function onChangeFolder(t: TabConfig) {
-    setError(null);
-    setChanging(null);
-    const folder = await backend.chooseFolder(`Choose a new folder for ${t.name}`);
-    if (!folder) return;
-    const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-    if (norm(folder) === norm(t.folder)) {
-      setError(`${t.name} already uses that folder.`);
-      return;
-    }
-    const hasNotes = await backend.pathExists(notesPathFor(folder));
-    const canMove = tabs[t.id]?.status === "ok";
-    setChanging({ tab: t, folder, hasNotes, canMove });
-  }
-
-  /** "Point at the new folder only": the existing notes stay where they are. */
-  async function pointAt(t: TabConfig, folder: string) {
-    setError(null);
-    try {
-      const r = await backend.prepareClientFolder(folder, t.name, t.colour, false);
-      if (
-        r.status === "foreign" &&
-        !window.confirm(
-          `${r.notesPath} already exists and was not made by this app. Add notebook files to it?`,
-        )
-      ) {
-        return;
-      }
-      if (r.status === "foreign") await backend.prepareClientFolder(folder, t.name, t.colour, true);
-      await changeFolder(t.id, folder, r.notesPath);
-      setChanging(null);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
 
   return (
     <>
-      <h3>Clients and folders</h3>
+      <h3>Characters and folders</h3>
       <p className="lead">
-        Each tab is tied to a folder. The app keeps its pages in a <code>notes</code> folder inside
-        it.
+        Each character is tied to a folder. The app keeps its pages in a{" "}
+        <code>notebook</code> folder inside it.
       </p>
 
-      {list.length === 0 && !adding && <p className="lead">No clients yet.</p>}
+      {list.length === 0 && !adding && <p className="lead">No characters yet.</p>}
 
       <div
         className={`client-list${drag ? " reordering" : ""}`}
         ref={listRef}
         onClickCapture={onClickCapture}
       >
-        {list.map((t, i) => {
-          const st = tabs[t.id];
+        {list.map((c, i) => {
+          const st = characters[c.id];
           const missing = st?.status === "missing";
           return (
             <div
-              className={`client-row${drag?.id === t.id ? " dragging" : ""}`}
-              key={t.id}
-              data-reorder-id={t.id}
+              className={`client-row${drag?.id === c.id ? " dragging" : ""}`}
+              key={c.id}
+              data-reorder-id={c.id}
               data-drop={dropMark(ids, i)}
             >
               <button
                 type="button"
                 className="grip"
-                aria-label={`Move ${t.name}. Drag, or use the up and down arrow keys.`}
+                aria-label={`Move ${c.name}. Drag, or use the up and down arrow keys.`}
                 title="Drag to reorder"
-                onPointerDown={start(t.id)}
+                onPointerDown={start(c.id)}
                 onKeyDown={(e) => {
                   if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
                   e.preventDefault();
                   const target = e.currentTarget.closest("[data-reorder-id]");
-                  // Read the order now, not from the last render, so quick presses all count.
-                  const from = visibleTabs(useNotebook.getState().config).findIndex(
-                    (x) => x.id === t.id,
+                  const from = visibleCharacters(useNotebook.getState().config).findIndex(
+                    (x) => x.id === c.id,
                   );
-                  void moveTab(t.id, e.key === "ArrowUp" ? from - 1 : from + 2);
-                  // Moving the row in the page drops focus; put it back before the next press.
+                  void moveCharacter(c.id, e.key === "ArrowUp" ? from - 1 : from + 2);
                   requestAnimationFrame(() =>
                     target?.querySelector<HTMLButtonElement>(".grip")?.focus(),
                   );
@@ -169,27 +131,27 @@ function ClientsSection() {
               >
                 <GripIcon size={18} />
               </button>
-              <span className="marker" style={{ background: t.colour }} aria-hidden="true" />
+              <span className="marker" style={{ background: c.cover }} aria-hidden="true" />
               <div className="meta">
-                <strong>{t.name}</strong>
-                <span title={notesPathFor(t.folder)}>
+                <strong>{c.name}</strong>
+                <span title={notebookPathFor(c.folder)}>
                   {missing ? "Folder not found: " : ""}
-                  {notesPathFor(t.folder)}
+                  {notebookPathFor(c.folder)}
                 </span>
               </div>
               <div className="row-actions">
                 <label
                   className="exclude-ai"
-                  title="Never send this tab's notes to the AI provider"
+                  title="Never send this character's notes to the AI provider"
                 >
                   <input
                     type="checkbox"
-                    checked={t.excludeFromAi}
+                    checked={c.excludeFromAi}
                     onChange={(e) =>
-                      void updateConfig((c) => ({
-                        ...c,
-                        tabs: c.tabs.map((x) =>
-                          x.id === t.id ? { ...x, excludeFromAi: e.target.checked } : x,
+                      void updateConfig((cfg) => ({
+                        ...cfg,
+                        characters: cfg.characters.map((x) =>
+                          x.id === c.id ? { ...x, excludeFromAi: e.target.checked } : x,
                         ),
                       }))
                     }
@@ -201,18 +163,15 @@ function ClientsSection() {
                   disabled={missing}
                   onClick={() =>
                     void backend
-                      .openInExplorer(notesPathFor(t.folder))
+                      .openInExplorer(notebookPathFor(c.folder))
                       .catch((e) => setError(String(e)))
                   }
                 >
                   Open folder
                 </button>
-                <button className="small-button" onClick={() => void onChangeFolder(t)}>
-                  Change folder
-                </button>
                 <button
                   className="small-button"
-                  onClick={() => void useNotebook.getState().archiveTab(t.id)}
+                  onClick={() => void useNotebook.getState().archiveCharacter(c.id)}
                 >
                   Archive
                 </button>
@@ -222,34 +181,23 @@ function ClientsSection() {
         })}
       </div>
 
-      {changing && (
-        <ChangeFolderCard
-          key={`${changing.tab.id}:${changing.folder}`}
-          changing={changing}
-          onPoint={() => pointAt(changing.tab, changing.folder)}
-          onDone={() => setChanging(null)}
-        />
-      )}
-
       {error && <p className="form-error">{error}</p>}
 
       {archived.length > 0 && (
         <section className="archived-clients" aria-labelledby="archived-heading">
           <h4 id="archived-heading">Archived</h4>
-          <p className="lead">Hidden from the tabs. Their folders and pages are untouched.</p>
-          {archived.map((t) => (
-            <div className="client-row archived" key={t.id}>
-              <span className="marker" style={{ background: t.colour }} aria-hidden="true" />
+          <p className="lead">Hidden from the shelf. Their folders and pages are untouched.</p>
+          {archived.map((c) => (
+            <div className="client-row archived" key={c.id}>
+              <span className="marker" style={{ background: c.cover }} aria-hidden="true" />
               <div className="meta">
-                <strong>{t.name}</strong>
-                <span title={notesPathFor(t.folder)}>{notesPathFor(t.folder)}</span>
+                <strong>{c.name}</strong>
+                <span title={notebookPathFor(c.folder)}>{notebookPathFor(c.folder)}</span>
               </div>
               <div className="row-actions">
                 <button
                   className="small-button"
-                  onClick={() => {
-                    void useNotebook.getState().restoreTab(t.id);
-                  }}
+                  onClick={() => void useNotebook.getState().restoreCharacter(c.id)}
                 >
                   Restore
                 </button>
@@ -260,126 +208,20 @@ function ClientsSection() {
       )}
 
       {adding ? (
-        <AddClientForm onDone={() => setAdding(false)} canCancel={list.length > 0} />
+        <AddCharacterForm onDone={() => setAdding(false)} canCancel={list.length > 0} />
       ) : (
         <button className="pill primary" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>
-          Add client
+          Add character
         </button>
       )}
     </>
   );
 }
 
-type Changing = { tab: TabConfig; folder: string; hasNotes: boolean; canMove: boolean };
-
-/** Change folder: move the existing notes across, or just point the tab at the new folder. */
-function ChangeFolderCard({
-  changing,
-  onPoint,
-  onDone,
-}: {
-  changing: Changing;
-  onPoint(): Promise<void>;
-  onDone(): void;
-}) {
-  const { tab, folder, hasNotes, canMove } = changing;
-  const [mode, setMode] = useState<"move" | "point">(canMove && !hasNotes ? "move" : "point");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const oldNotes = notesPathFor(tab.folder);
-  const newNotes = notesPathFor(folder);
-
-  async function confirm() {
-    setBusy(true);
-    setError(null);
-    try {
-      if (mode === "move") {
-        await useNotebook.getState().moveNotes(tab.id, folder);
-        onDone();
-      } else {
-        await onPoint();
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form
-      className="form-card change-folder"
-      aria-label={`Change folder for ${tab.name}`}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void confirm();
-      }}
-    >
-      <h3>Change folder for {tab.name}</h3>
-      <p className="lead">
-        New folder: <span className="path-preview">{folder}</span>
-      </p>
-      <fieldset className="choices" disabled={busy}>
-        <legend className="visually-hidden">What to do with the existing notes</legend>
-        <label className={canMove ? "" : "disabled"}>
-          <input
-            type="radio"
-            name="change-folder"
-            checked={mode === "move"}
-            disabled={!canMove}
-            onChange={() => setMode("move")}
-          />
-          <span>
-            <strong>Move existing notes</strong>
-            <span className="hint">
-              {canMove
-                ? `Copies ${oldNotes} to ${newNotes}, checks every file, then moves the old folder to the Recycle Bin.`
-                : "The current notes folder cannot be found, so there is nothing to move."}
-              {canMove && hasNotes
-                ? " The new folder already has a notes folder; moving only works if it is empty."
-                : ""}
-            </span>
-          </span>
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="change-folder"
-            checked={mode === "point"}
-            onChange={() => setMode("point")}
-          />
-          <span>
-            <strong>Point at the new folder only</strong>
-            <span className="hint">
-              {hasNotes
-                ? `Opens the notes already in ${newNotes}. The current notes stay where they are.`
-                : `Starts an empty notes folder in ${newNotes}. The current notes stay where they are.`}
-            </span>
-          </span>
-        </label>
-      </fieldset>
-      {busy && mode === "move" && (
-        <p className="lead" role="status">
-          Moving and checking notes…
-        </p>
-      )}
-      {error && <p className="form-error">{error}</p>}
-      <div className="form-actions">
-        <button type="button" className="pill ghost" onClick={onDone} disabled={busy}>
-          Cancel
-        </button>
-        <button type="submit" className="pill primary" disabled={busy}>
-          {mode === "move" ? "Move notes" : "Change folder"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: boolean }) {
-  const addClient = useNotebook((s) => s.addClient);
+function AddCharacterForm({ onDone, canCancel }: { onDone: () => void; canCancel: boolean }) {
+  const addCharacter = useNotebook((s) => s.addCharacter);
   const [name, setName] = useState("");
-  const [colour, setColour] = useState<string>(INK_COLOURS[1].value);
+  const [cover, setCover] = useState<string>(COVER_COLOURS[0].value);
   const [folder, setFolder] = useState<string | null>(null);
   const [foreignPath, setForeignPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -388,7 +230,7 @@ function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: b
   async function choose() {
     setError(null);
     setForeignPath(null);
-    const f = await backend.chooseFolder("Choose the client folder");
+    const f = await backend.chooseFolder("Choose the character folder");
     if (f) setFolder(f);
   }
 
@@ -397,12 +239,12 @@ function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: b
     setBusy(true);
     setError(null);
     try {
-      const r = await backend.prepareClientFolder(folder, name.trim(), colour, allowForeign);
+      const r = await backend.prepareCharacterFolder(folder, name.trim(), cover, allowForeign);
       if (r.status === "foreign") {
-        setForeignPath(r.notesPath);
+        setForeignPath(r.notebookPath);
         return;
       }
-      await addClient({ name: name.trim(), colour, folder, notesPath: r.notesPath });
+      await addCharacter({ name: name.trim(), cover, folder, notebookPath: r.notebookPath });
       onDone();
     } catch (e) {
       setError(String(e));
@@ -419,20 +261,20 @@ function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: b
         void confirm(false);
       }}
     >
-      <h3>Add client</h3>
+      <h3>Add character</h3>
       <label className="field">
         Name
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Grade A Technology"
+          placeholder="Thorin Oakenshield"
           autoFocus
         />
       </label>
       <div className="field">
-        <span id="colour-label">Colour</span>
-        <ColourPicker value={colour} onChange={setColour} labelledBy="colour-label" />
+        <span id="cover-label">Cover colour</span>
+        <CoverPicker value={cover} onChange={setCover} labelledBy="cover-label" />
       </div>
       <div className="field">
         Folder
@@ -440,14 +282,14 @@ function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: b
           <button type="button" className="small-button" onClick={() => void choose()}>
             Choose folder
           </button>
-          {folder && <span className="path-preview">{notesPathFor(folder)}</span>}
+          {folder && <span className="path-preview">{notebookPathFor(folder)}</span>}
         </div>
       </div>
 
       {foreignPath && (
         <div className="form-warning" role="alert">
           {foreignPath} already exists and was not made by this app. The app will add{" "}
-          <code>notebook.json</code>, <code>pages</code> and <code>assets</code> to it and leave
+          <code>character.json</code>, <code>pages</code> and <code>assets</code> to it and leave
           your existing files alone.
           <div className="form-actions" style={{ marginTop: 10 }}>
             <button type="button" className="small-button" onClick={() => setForeignPath(null)}>
@@ -469,9 +311,10 @@ function AddClientForm({ onDone, canCancel }: { onDone: () => void; canCancel: b
           </button>
         )}
         <button type="submit" className="pill primary" disabled={busy || !folder || !name.trim()}>
-          Add client
+          Add character
         </button>
       </div>
     </form>
   );
 }
+

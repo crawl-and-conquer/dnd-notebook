@@ -52,7 +52,7 @@ type Editing = { el: Extract<Element, { type: "text" | "checklist" }>; isNew: bo
 type Props = {
   page: Page;
   readOnly: boolean;
-  notesPath: string;
+  notebookPath: string;
   onTitleChange(title: string): void;
 };
 
@@ -60,7 +60,7 @@ const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement &&
   (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
-export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) {
+export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -691,7 +691,7 @@ export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) 
   const placeImage = useCallback(
     async (blob: Blob, at: Point) => {
       try {
-        const { rel, width, height } = await importImage(notesPath, blob);
+        const { rel, width, height } = await importImage(notebookPath, blob);
         const { w, h } = placedSize(width, height);
         const p = snapPoint(at, live.current.grid, live.current.lock);
         const el = makeImage(rel, p.x, p.y, w, h);
@@ -702,7 +702,7 @@ export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) 
         useNotebook.setState({ notice: `Could not add the image: ${String(e)}` });
       }
     },
-    [notesPath, editElements, setSelected],
+    [notebookPath, editElements, setSelected],
   );
 
   useEffect(() => {
@@ -872,7 +872,7 @@ export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) 
         <ElementNode
           key={el.id}
           el={el}
-          notesPath={notesPath}
+          notebookPath={notebookPath}
           draggable={draggable}
           hidden={editingId === el.id}
           dragBoundFunc={dragBound}
@@ -883,7 +883,7 @@ export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) 
       )),
     [
       ordered,
-      notesPath,
+      notebookPath,
       draggable,
       editingId,
       dragBound,
@@ -947,7 +947,7 @@ export function PaperStage({ page, readOnly, notesPath, onTitleChange }: Props) 
             <Group listening={false}>
               <ElementNode
                 el={draftElement}
-                notesPath={notesPath}
+                notebookPath={notebookPath}
                 draggable={false}
                 hidden={false}
               />

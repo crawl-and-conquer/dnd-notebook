@@ -4,8 +4,15 @@ import { z } from "zod";
 export const PAGE_SCHEMA_VERSION = 1 as const;
 
 /** Fixed sheet size in page coordinates (SPEC: Visual design). */
-export const PAGE_WIDTH = 1600;
-export const PAGE_HEIGHT = 1100;
+export const PAGE_WIDTH = 570;
+export const PAGE_HEIGHT = 720;
+
+/** Header band above the ruled area (no rules). */
+export const PAGE_HEADER_H = 88;
+/** Rules repeat every 32 px; first rule at y = 95. */
+export const RULE_PITCH = 32;
+/** Left edge of the writing area (right of the margin line). */
+export const PAGE_MARGIN_X = 92;
 
 const isoDateTime = z.string().min(1);
 
@@ -95,6 +102,11 @@ export const PageSchema = z.object({
   schemaVersion: z.literal(PAGE_SCHEMA_VERSION),
   id: z.string().min(1),
   title: z.string(),
+  /** The section this page belongs to (default "sessions" for backward compat). */
+  section: z.string().default("sessions"),
+  session: z
+    .object({ number: z.number(), date: z.string(), place: z.string() })
+    .optional(),
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
   elements: z.array(ElementSchema),
@@ -163,6 +175,7 @@ function parseFuturePage(raw: Record<string, unknown>, version: number): ParsedP
       schemaVersion: PAGE_SCHEMA_VERSION,
       id: str(raw.id, "unknown"),
       title: str(raw.title, "Untitled"),
+      section: str(raw.section, "sessions"),
       createdAt: str(raw.createdAt, now),
       updatedAt: str(raw.updatedAt, now),
       elements,
@@ -178,12 +191,17 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
-export function createPage(now: Date = new Date(), title = "Untitled page"): Page {
+export function createPage(
+  now: Date = new Date(),
+  title = "Untitled page",
+  section = "sessions",
+): Page {
   const iso = now.toISOString();
   return {
     schemaVersion: PAGE_SCHEMA_VERSION,
     id: newId(),
     title,
+    section,
     createdAt: iso,
     updatedAt: iso,
     elements: [],

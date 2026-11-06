@@ -29,7 +29,7 @@ function dataUrlToBytes(url: string): Uint8Array {
  */
 export async function renderPagePng(
   page: Page,
-  notesPath: string,
+  notebookPath: string,
   opts: RenderOptions,
 ): Promise<Uint8Array> {
   await document.fonts.ready;
@@ -38,7 +38,7 @@ export async function renderPagePng(
   if (wanted)
     await Promise.all(
       images.map((i) =>
-        i.type === "image" ? loadAsset(notesPath, i.asset).catch(() => null) : null,
+        i.type === "image" ? loadAsset(notebookPath, i.asset).catch(() => null) : null,
       ),
     );
 
@@ -67,9 +67,8 @@ export async function renderPagePng(
           <Layer>
             <PageScene
               page={page}
-              notesPath={notesPath}
+              notebookPath={notebookPath}
               grid={opts.grid}
-              today={opts.today ?? new Date().toISOString().slice(0, 10)}
             />
           </Layer>
         </Stage>

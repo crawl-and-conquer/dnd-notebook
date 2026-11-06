@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub const ANTHROPIC_VERSION: &str = "2026-10-21";
-pub const APP_TITLE: &str = "DnD Notebook";
+pub const APP_TITLE: &str = "Adventurer's Notebook";
 pub const APP_REFERER: &str = "https://github.com/crawl-and-conquer/dnd-notebook";
 
 #[derive(Deserialize, Clone, Debug)]

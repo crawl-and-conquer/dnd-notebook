@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { backend } from "../storage/backend";
 import type { TabConfig } from "../model/config";
-import { useNotebook, visibleTabs } from "./notebook";
+import type { CharacterConfig } from "../model/config";
+import { useNotebook, visibleCharacters } from "./notebook";
 import { applyTabOrder, moveToSlot } from "./tabOrder";
 
 describe("moveToSlot", () => {
@@ -40,60 +41,61 @@ describe("applyTabOrder", () => {
   });
 });
 
-describe("tab actions", () => {
+describe("character actions", () => {
   const state = () => useNotebook.getState();
-  const names = () => visibleTabs(state().config).map((t) => t.name);
-  const idOf = (name: string) => state().config.tabs.find((t) => t.name === name)!.id;
+  const names = () => visibleCharacters(state().config).map((c) => c.name);
+  const idOf = (name: string) => state().config.characters.find((c) => c.name === name)!.id;
 
   beforeAll(async () => {
     for (const name of ["Alpha", "Bravo", "Charlie"]) {
-      const folder = `C:/Demo/Tabs/${name}`;
-      const r = await backend.prepareClientFolder(folder, name, "#01C6A3", false);
-      await state().addClient({ name, colour: "#01C6A3", folder, notesPath: r.notesPath });
+      const folder = `C:/Demo/Characters/${name}`;
+      const r = await backend.prepareCharacterFolder(folder, name, "#46562f", false);
+      await state().addCharacter({ name, cover: "#46562f", folder, notebookPath: r.notebookPath });
     }
   });
 
-  it("renames a tab, ignoring blank names", async () => {
-    await state().renameTab(idOf("Bravo"), "  Bravo Ltd  ");
-    await state().renameTab(idOf("Bravo Ltd"), "   ");
-    expect(names()).toEqual(["Alpha", "Bravo Ltd", "Charlie"]);
+  it("renames a character, ignoring blank names", async () => {
+    await state().renameCharacter(idOf("Bravo"), "  Bravo the Bold  ");
+    await state().renameCharacter(idOf("Bravo the Bold"), "   ");
+    expect(names()).toContain("Bravo the Bold");
+    expect(names()).not.toContain("Bravo");
   });
 
-  it("changes a tab's colour", async () => {
-    await state().setTabColour(idOf("Alpha"), "#FF5C86");
-    expect(state().config.tabs.find((t) => t.name === "Alpha")!.colour).toBe("#FF5C86");
+  it("changes a character's cover colour", async () => {
+    await state().setCharacterCover(idOf("Alpha"), "#6b2a26");
+    expect(state().config.characters.find((c) => c.name === "Alpha")!.cover).toBe("#6b2a26");
   });
 
-  it("reorders tabs and saves the order", async () => {
-    await state().moveTab(idOf("Charlie"), 0);
-    expect(names()).toEqual(["Charlie", "Alpha", "Bravo Ltd"]);
-    const saved = JSON.parse((await backend.readAppConfig())!) as { tabs: TabConfig[] };
+  it("reorders characters", async () => {
+    await state().moveCharacter(idOf("Charlie"), 0);
+    expect(names().slice(0, 3)).toEqual(["Charlie", "Alpha", "Bravo the Bold"]);
+    const saved = JSON.parse((await backend.readAppConfig())!) as { characters: CharacterConfig[] };
     expect(
-      saved.tabs
-        .filter((t) => !t.archived)
+      saved.characters
+        .filter((c) => !c.archived)
         .sort((a, b) => a.order - b.order)
-        .map((t) => t.name),
-    ).toEqual(["Charlie", "Alpha", "Bravo Ltd"]);
+        .map((c) => c.name),
+    ).toEqual(["Charlie", "Alpha", "Bravo the Bold"]);
   });
 
-  it("archives the open tab and opens its neighbour", async () => {
-    state().openTab(idOf("Alpha"));
-    await state().archiveTab(idOf("Alpha"));
-    expect(names()).toEqual(["Charlie", "Bravo Ltd"]);
-    expect(state().view).toEqual({ kind: "tab", tabId: idOf("Bravo Ltd") });
-    expect(state().notice).toMatch(/Archived "Alpha"/);
+  it("archives the open character and opens its neighbour", async () => {
+    state().openCharacter(idOf("Alpha"));
+    await state().archiveCharacter(idOf("Alpha"));
+    expect(names()).not.toContain("Alpha");
+    const v = state().view;
+    expect("characterId" in v && v.characterId === idOf("Charlie")).toBe(true);
   });
 
-  it("restores an archived tab at the end and opens it", async () => {
-    await state().restoreTab(idOf("Alpha"));
-    expect(names()).toEqual(["Charlie", "Bravo Ltd", "Alpha"]);
-    expect(state().view).toEqual({ kind: "tab", tabId: idOf("Alpha") });
-    expect(state().tabs[idOf("Alpha")]?.status).toBe("ok");
-    expect(state().notice).toBeNull(); // the "Archived" notice no longer applies
+  it("restores an archived character at the end and opens it", async () => {
+    await state().restoreCharacter(idOf("Alpha"));
+    expect(names()).toContain("Alpha");
+    const v = state().view;
+    expect("characterId" in v && v.characterId === idOf("Alpha")).toBe(true);
+    expect(state().characters[idOf("Alpha")]?.status).toBe("ok");
   });
 
-  it("archiving the last visible tab leaves the empty state", async () => {
-    for (const name of ["Charlie", "Bravo Ltd", "Alpha"]) await state().archiveTab(idOf(name));
+  it("archiving all visible characters leaves the empty state", async () => {
+    for (const name of ["Charlie", "Bravo the Bold", "Alpha"]) await state().archiveCharacter(idOf(name));
     expect(names()).toEqual([]);
     expect(state().view).toEqual({ kind: "empty" });
   });

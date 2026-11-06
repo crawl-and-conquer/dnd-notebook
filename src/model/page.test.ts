@@ -15,6 +15,7 @@ const fullPage: Page = {
   schemaVersion: 1,
   id: "p1",
   title: "Faceted navigation audit",
+  section: "sessions",
   createdAt: T,
   updatedAt: T,
   elements: [

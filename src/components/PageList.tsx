@@ -6,18 +6,25 @@ import { editedLabel } from "./pageListFormat";
 /** Marks the status-bar button that toggles the list, so clicking it is not an "outside" click. */
 export const PAGE_LIST_TOGGLE = "data-page-list-toggle";
 
-/** The page list (Ctrl+P or the page count): open, new, rename, duplicate and delete pages. */
+/** Page list for the current section: open, new, rename, duplicate and delete pages. */
 export function PageList() {
   const open = useNotebook((s) => s.pageListOpen);
   const view = useNotebook((s) => s.view);
-  if (!open || view.kind !== "tab") return null;
-  return <PageListPopover tabId={view.tabId} />;
+  if (!open || !("characterId" in view)) return null;
+  return <PageListPopover characterId={view.characterId} sectionId={view.sectionId} spreadIndex={view.spreadIndex} />;
 }
 
-function PageListPopover({ tabId }: { tabId: string }) {
-  const tab = useNotebook((s) => s.tabs[tabId]);
-  const tabName = useNotebook((s) => s.config.tabs.find((t) => t.id === tabId)?.name ?? "");
-  const currentId = useNotebook((s) => s.currentPage[tabId]);
+function PageListPopover({
+  characterId,
+  sectionId,
+  spreadIndex,
+}: {
+  characterId: string;
+  sectionId: string;
+  spreadIndex: number;
+}) {
+  const ch = useNotebook((s) => s.characters[characterId]);
+  const charName = useNotebook((s) => s.config.characters.find((c) => c.id === characterId)?.name ?? "");
   const setOpen = useNotebook((s) => s.setPageListOpen);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -26,16 +33,15 @@ function PageListPopover({ tabId }: { tabId: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const now = new Date();
 
-  const pages = tab?.status === "ok" ? tab.pages : [];
-  const current = pages.find((p) => p.page.id === currentId) ?? pages[pages.length - 1];
+  const pages = ch?.status === "ok" ? (ch.sectionPages[sectionId] ?? []) : [];
+  const currentPageIdx = spreadIndex * 2;
+  const current = pages[currentPageIdx] ?? null;
 
-  // Focus the current page when the list opens.
   useEffect(() => {
     const el = ref.current?.querySelector<HTMLButtonElement>(".page-open.current");
     (el ?? ref.current?.querySelector<HTMLButtonElement>("button"))?.focus();
   }, []);
 
-  // Close on an outside click.
   useEffect(() => {
     const away = (e: PointerEvent) => {
       const t = e.target as Element;
@@ -46,8 +52,6 @@ function PageListPopover({ tabId }: { tabId: string }) {
     return () => window.removeEventListener("pointerdown", away, true);
   }, [setOpen]);
 
-  // Escape steps back (cancel rename or delete, then close) wherever focus is: clicking a row
-  // button swaps it out of the page, which drops focus to the body.
   useEffect(() => {
     const onEscape = (e: globalThis.KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -60,7 +64,6 @@ function PageListPopover({ tabId }: { tabId: string }) {
     return () => window.removeEventListener("keydown", onEscape, true);
   }, [renaming, confirming, setOpen]);
 
-  // Keep keyboard focus in the list as rows switch between view, rename and confirm.
   useEffect(() => {
     if (confirming) ref.current?.querySelector<HTMLButtonElement>("li.confirming button")?.focus();
     else if (!renaming && !ref.current?.contains(document.activeElement)) {
@@ -80,8 +83,8 @@ function PageListPopover({ tabId }: { tabId: string }) {
     }
   };
 
-  const openPage = (pageId: string) => {
-    useNotebook.getState().openPageAt(tabId, pageId);
+  const openPage = (pageIdx: number) => {
+    useNotebook.getState().goToSpread(Math.floor(pageIdx / 2));
     close();
   };
 
@@ -93,7 +96,7 @@ function PageListPopover({ tabId }: { tabId: string }) {
 
   const saveRename = (e: FormEvent) => {
     e.preventDefault();
-    if (renaming) useNotebook.getState().renamePage(tabId, renaming, draft);
+    if (renaming) useNotebook.getState().renamePage(characterId, sectionId, renaming, draft);
     setRenaming(null);
   };
 
@@ -111,12 +114,12 @@ function PageListPopover({ tabId }: { tabId: string }) {
       className="page-list"
       ref={ref}
       role="dialog"
-      aria-label={`Pages in ${tabName}`}
+      aria-label={`Pages in ${charName}`}
       onKeyDown={onKeyDown}
     >
       <header>
         <h3>Pages</h3>
-        <span className="tab-name">{tabName}</span>
+        <span className="tab-name">{charName}</span>
         <button className="icon-button small" aria-label="Close page list" onClick={close}>
           <CloseIcon size={16} />
         </button>
@@ -167,7 +170,7 @@ function PageListPopover({ tabId }: { tabId: string }) {
                       disabled={busy}
                       onClick={() =>
                         void run(async () => {
-                          await useNotebook.getState().deletePage(tabId, id);
+                          await useNotebook.getState().deletePage(characterId, sectionId, id);
                           setConfirming(null);
                         })
                       }
@@ -186,7 +189,7 @@ function PageListPopover({ tabId }: { tabId: string }) {
                 <button
                   className={`page-open${isCurrent ? " current" : ""}`}
                   aria-current={isCurrent ? "page" : undefined}
-                  onClick={() => openPage(id)}
+                  onClick={() => openPage(i)}
                 >
                   <span className="num">{i + 1}</span>
                   <span className="text">
@@ -213,7 +216,7 @@ function PageListPopover({ tabId }: { tabId: string }) {
                     disabled={p.readOnly || busy}
                     onClick={() =>
                       void run(async () => {
-                        await useNotebook.getState().duplicatePage(tabId, id);
+                        await useNotebook.getState().duplicatePage(characterId, sectionId, id);
                         close();
                       })
                     }
@@ -242,7 +245,7 @@ function PageListPopover({ tabId }: { tabId: string }) {
       <footer>
         <button
           className="pill primary"
-          disabled={busy || tab?.status !== "ok"}
+          disabled={busy || ch?.status !== "ok"}
           onClick={() =>
             void run(async () => {
               await useNotebook.getState().newPage();

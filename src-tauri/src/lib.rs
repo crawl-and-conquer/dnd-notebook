@@ -40,21 +40,17 @@ pub fn run() {
             fs::read_app_file,
             fs::write_app_file,
             fs::path_exists,
-            fs::prepare_client_folder,
-            fs::list_page_files,
+            fs::prepare_character_folder,
+            fs::list_section_page_files,
             fs::read_text_file,
             fs::write_text_atomic,
             fs::rename_file,
             fs::open_in_explorer,
             fs::trash_page_file,
-            fs::update_notebook_meta,
-            fs::list_meeting_files,
-            fs::write_meeting_file,
-            fs::rename_meeting_file,
-            fs::trash_meeting_file,
-            move_notes::move_notes,
-            watch::watch_notes_folder,
-            watch::unwatch_notes_folder,
+            fs::update_character_meta,
+            move_notes::move_notebook,
+            watch::watch_notebook_folder,
+            watch::unwatch_notebook_folder,
             fs::open_app_dir,
             fs::backup_config,
             assets::save_asset,
@@ -71,5 +67,5 @@ pub fn run() {
             export::export_copy_asset,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running DnD Notebook");
+        .expect("error while running Adventurer's Notebook");
 }

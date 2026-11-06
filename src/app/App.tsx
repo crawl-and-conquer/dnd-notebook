@@ -1,17 +1,22 @@
-import { useEffect, type ReactNode } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useEffect } from "react";
+import { Layer, Stage } from "react-konva";
 import { PaperStage } from "../canvas/PaperStage";
+import { PageScene } from "../canvas/PageScene";
+import { ThemeContext, screenTheme } from "../canvas/theme";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StatusBar } from "../components/StatusBar";
-import { Tabs } from "../components/Tabs";
-import { Toolbar } from "../components/Toolbar";
+import { Shelf } from "../components/Shelf";
+import { SectionTabs } from "../components/SectionTabs";
 import { CloseIcon } from "../components/Icons";
 import { backend } from "../storage/backend";
-import { currentPageOf, useNotebook } from "../store/notebook";
+import { currentSpreadPages, useNotebook } from "../store/notebook";
 import { TOOL_KEYS, useTools } from "../store/tools";
 import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
+import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
+import { PAGE_HEIGHT, PAGE_WIDTH } from "../model/page";
 import { useUpdates } from "./updates";
+import { useShallow } from "zustand/react/shallow";
 
 /** "Version x is ready" with Install and restart, or Later. */
 function UpdatePrompt() {
@@ -21,7 +26,7 @@ function UpdatePrompt() {
     <div className="notice update-notice" role="status">
       <span>
         {state.kind === "available"
-          ? `Version ${state.version} of DnD Notebook is ready to install.`
+          ? `Version ${state.version} of Adventurer's Notebook is ready to install.`
           : `Installing the update${state.percent !== null ? ` (${state.percent}%)` : ""}. The app will restart.`}
       </span>
       {state.kind === "available" && (
@@ -37,8 +42,6 @@ function UpdatePrompt() {
     </div>
   );
 }
-
-const RING_COUNT = 14;
 
 function isTyping(t: EventTarget | null): boolean {
   return (
@@ -57,14 +60,11 @@ export function App() {
     void init();
   }, [init]);
 
-  // Check GitHub Releases for a newer version once the notebook is open (installed builds only).
   useEffect(() => {
     if (!ready || import.meta.env.DEV) return;
     if (useNotebook.getState().config.general.checkForUpdates) void useUpdates.getState().check();
   }, [ready]);
 
-  // Save anything pending before the window closes. Tauri then destroys the window, which needs
-  // the core:window:allow-destroy permission. A failed or slow save must never stop the close.
   useEffect(() => {
     if (!backend.isTauri) return;
     let unlisten: (() => void) | undefined;
@@ -90,7 +90,6 @@ export function App() {
     };
   }, []);
 
-  // Page files changed outside the app (OneDrive, Dropbox, another editor).
   useEffect(() => {
     if (!backend.isTauri) return;
     let unlisten: (() => void) | undefined;
@@ -112,7 +111,6 @@ export function App() {
     };
   }, []);
 
-  // Global shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useNotebook.getState();
@@ -127,8 +125,8 @@ export function App() {
         return;
       }
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
-        e.preventDefault(); // never the browser's print dialog
-        if (s.view.kind === "tab" && !s.settingsOpen && !useExportDialog.getState().open) {
+        e.preventDefault();
+        if ("characterId" in s.view && !s.settingsOpen && !useExportDialog.getState().open) {
           s.setPageListOpen(!s.pageListOpen);
         }
         return;
@@ -160,14 +158,14 @@ export function App() {
 
   return (
     <div className="app">
-      <Toolbar />
       <main className="main">
-        {ready ? <MainView /> : <div className="placeholder-view">Opening notebook</div>}
+        {ready ? <MainView /> : <div className="placeholder-view">Opening notebook…</div>}
         <CatchUpPanel />
       </main>
       <StatusBar />
       <SettingsPanel />
       <ExportDialog />
+      <NewCharacterDialog />
       <UpdatePrompt />
       {notice && (
         <div className="notice" role="status">
@@ -183,96 +181,148 @@ export function App() {
 
 function MainView() {
   const view = useNotebook((s) => s.view);
-  const tabs = useNotebook((s) => s.tabs);
   const config = useNotebook((s) => s.config);
-  const openSettings = useNotebook((s) => s.setSettingsOpen);
-  const newPage = useNotebook((s) => s.newPage);
+  const spread = useNotebook(useShallow(currentSpreadPages));
   const updatePage = useNotebook((s) => s.updatePage);
-  const cur = useNotebook(useShallow(currentPageOf));
+  const openSettings = useNotebook((s) => s.setSettingsOpen);
+  const openNewChar = useNewCharacterDialog((s) => s.setOpen);
+  const grid = useNotebook((s) => s.config.general.gridSize);
 
-  let content: ReactNode;
-  if (view.kind === "empty") {
-    content = (
-      <div className="empty-state">
-        <div>
-          <h2>Add your first client</h2>
-          <p>
-            Each tab is tied to a folder on disk. Choose a client folder in Settings and the app
-            will keep its notes there.
-          </p>
-          <div className="actions">
-            <button className="pill primary" onClick={() => openSettings(true)}>
-              Open settings
-            </button>
+  const hasCharacters = config.characters.some((c) => !c.archived);
+  const characterId = "characterId" in view ? view.characterId : null;
+  const ch = useNotebook((s) => (characterId ? s.characters[characterId] : null));
+
+  if (!hasCharacters) {
+    return (
+      <div className="layout">
+        <div className="empty-state">
+          <div>
+            <h2>Welcome to Adventurer's Notebook</h2>
+            <p>Create your first character to get started.</p>
+            <div className="actions">
+              <button className="pill primary" onClick={() => openNewChar(true)}>
+                New character
+              </button>
+              <button className="pill ghost" onClick={() => openSettings(true)}>
+                Settings
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
-  } else {
-    const tabState = tabs[view.tabId];
-    const tab = config.tabs.find((t) => t.id === view.tabId);
-    if (!tabState || tabState.status === "loading") {
-      content = <div className="placeholder-view">Opening {tab?.name}</div>;
-    } else if (tabState.status === "missing") {
-      content = (
+  }
+
+  if (!characterId || !ch) {
+    return (
+      <div className="layout">
+        <Shelf />
+        <div className="empty-state">
+          <div>
+            <p>Select a character from the shelf.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (ch.status === "loading") {
+    return (
+      <div className="layout">
+        <Shelf />
+        <div className="placeholder-view">
+          Opening {config.characters.find((c) => c.id === characterId)?.name}…
+        </div>
+      </div>
+    );
+  }
+
+  if (ch.status === "missing") {
+    return (
+      <div className="layout">
+        <Shelf />
         <div className="empty-state">
           <div>
             <h2>Folder not found</h2>
             <p>
-              {tabState.notesPath} is not available. The drive may be unplugged or the folder moved.
-              The app will not create a new one on its own.
+              {ch.notebookPath} is not available. The drive may be unplugged or the folder moved.
             </p>
             <div className="actions">
               <button className="pill primary" onClick={() => openSettings(true)}>
-                Choose it again
+                Settings
               </button>
               <button
                 className="pill ghost"
-                onClick={() => void useNotebook.getState().reloadTab(view.tabId)}
+                onClick={() => void useNotebook.getState().reloadCharacter(characterId)}
               >
                 Try again
               </button>
             </div>
           </div>
         </div>
-      );
-    } else if (!cur) {
-      content = (
+        <SectionTabs characterId={characterId} />
+      </div>
+    );
+  }
+
+  // ok status — show spread
+  if (!spread) {
+    return (
+      <div className="layout">
+        <Shelf />
         <div className="empty-state">
           <div>
             <h2>No pages yet</h2>
-            <p>Start the first page for {tab?.name}.</p>
+            <p>Start the first page.</p>
             <div className="actions">
-              <button className="pill primary" onClick={() => void newPage()}>
+              <button className="pill primary" onClick={() => void useNotebook.getState().newPage()}>
                 New page
               </button>
             </div>
           </div>
         </div>
-      );
-    } else {
-      content = (
-        <PaperStage
-          page={cur.loaded.page}
-          readOnly={cur.loaded.readOnly}
-          notesPath={tabState.notesPath}
-          onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
-        />
-      );
-    }
+        <SectionTabs characterId={characterId} />
+      </div>
+    );
   }
 
+  const { left, right } = spread;
+
   return (
-    <>
-      <section className="sheet" aria-label="Page">
-        <div className="rings" aria-hidden="true">
-          {Array.from({ length: RING_COUNT }, (_, i) => (
-            <span key={i} />
-          ))}
+    <div className="layout">
+      <Shelf />
+      <div className="cover">
+        <div className="spread">
+          {left && (
+            <div className="spread-page spread-left">
+              <PaperStage
+                page={left.page}
+                readOnly={left.readOnly}
+                notebookPath={ch.notebookPath}
+                onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
+              />
+            </div>
+          )}
+          {right ? (
+            <div className="spread-page spread-right">
+              <ThemeContext.Provider value={{ ...screenTheme, images: true }}>
+                <Stage width={PAGE_WIDTH} height={PAGE_HEIGHT} listening={false}>
+                  <Layer>
+                    <PageScene
+                      page={right.page}
+                      notebookPath={ch.notebookPath}
+                      grid={grid}
+                    />
+                  </Layer>
+                </Stage>
+              </ThemeContext.Provider>
+            </div>
+          ) : (
+            <div className="spread-page spread-right spread-blank" aria-hidden="true" />
+          )}
         </div>
-        {content}
-      </section>
-      <Tabs />
-    </>
+      </div>
+      <SectionTabs characterId={characterId} />
+    </div>
   );
 }

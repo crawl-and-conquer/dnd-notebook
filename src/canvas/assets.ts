@@ -5,7 +5,7 @@ import { backend } from "../storage/backend";
 export const MAX_IMAGE_WIDTH = 800;
 
 const cache = new Map<string, Promise<HTMLImageElement>>();
-const key = (notesPath: string, rel: string) => `${notesPath}|${rel}`;
+const key = (notebookPath: string, rel: string) => `${notebookPath}|${rel}`;
 
 function loadFromUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -16,12 +16,12 @@ function loadFromUrl(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export function loadAsset(notesPath: string, rel: string): Promise<HTMLImageElement> {
-  const k = key(notesPath, rel);
+export function loadAsset(notebookPath: string, rel: string): Promise<HTMLImageElement> {
+  const k = key(notebookPath, rel);
   let p = cache.get(k);
   if (!p) {
     p = backend
-      .readAsset(notesPath, rel)
+      .readAsset(notebookPath, rel)
       .then((buf) => loadFromUrl(URL.createObjectURL(new Blob([buf], { type: "image/png" }))));
     p.catch(() => cache.delete(k));
     cache.set(k, p);
@@ -29,18 +29,18 @@ export function loadAsset(notesPath: string, rel: string): Promise<HTMLImageElem
   return p;
 }
 
-export function useAsset(notesPath: string, rel: string): HTMLImageElement | null {
+export function useAsset(notebookPath: string, rel: string): HTMLImageElement | null {
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   useEffect(() => {
     let live = true;
-    loadAsset(notesPath, rel).then(
+    loadAsset(notebookPath, rel).then(
       (i) => live && setImg(i),
       () => live && setImg(null),
     );
     return () => {
       live = false;
     };
-  }, [notesPath, rel]);
+  }, [notebookPath, rel]);
   return img;
 }
 
@@ -58,7 +58,7 @@ function toBase64(buf: ArrayBuffer): string {
  * by hash on the Rust side) and returns its path and natural size.
  */
 export async function importImage(
-  notesPath: string,
+  notebookPath: string,
   blob: Blob,
 ): Promise<{ rel: string; width: number; height: number }> {
   const bitmap = await createImageBitmap(blob);
@@ -75,8 +75,8 @@ export async function importImage(
       "image/png",
     ),
   );
-  const rel = await backend.saveAsset(notesPath, toBase64(await png.arrayBuffer()));
-  const k = key(notesPath, rel);
+  const rel = await backend.saveAsset(notebookPath, toBase64(await png.arrayBuffer()));
+  const k = key(notebookPath, rel);
   if (!cache.has(k)) cache.set(k, loadFromUrl(URL.createObjectURL(png)));
   return { rel, width: canvas.width, height: canvas.height };
 }

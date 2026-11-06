@@ -1,21 +1,33 @@
 import { z } from "zod";
 
-/** The five ink colours from the design tokens, in toolbar order. */
+/** Default favourite ink colours in toolbar order. */
 export const INK_COLOURS = [
-  { id: "white", label: "White", value: "#F4F7FF" },
-  { id: "mint", label: "Mint", value: "#01C6A3" },
-  { id: "gold", label: "Gold", value: "#E8A828" },
-  { id: "pink", label: "Pink", value: "#FF5C86" },
-  { id: "pale-blue", label: "Pale blue", value: "#8FB8FF" },
+  { id: "iron-gall", label: "Iron gall", value: "#2b2622" },
+  { id: "oxblood", label: "Oxblood", value: "#8e2a2a" },
+  { id: "prussian-blue", label: "Prussian blue", value: "#2a4e7f" },
+  { id: "moss", label: "Moss", value: "#4f6b32" },
+  { id: "sepia", label: "Sepia", value: "#6b4a2e" },
+  { id: "violet", label: "Violet", value: "#6d4a8a" },
 ] as const;
 
 export const STROKE_WIDTHS = [2, 4, 8] as const;
 
+/** Stored in app config; the folder the user chose. Notebook lives in `<folder>/notebook`. */
+export const CharacterConfigSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cover: z.string().default("#46562f"),
+  folder: z.string().min(1),
+  order: z.number(),
+  archived: z.boolean().default(false),
+  excludeFromAi: z.boolean().default(false),
+});
+
+/** Kept for migration only: old EN-era tab entries in a user's config.json. */
 export const TabConfigSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   colour: z.string(),
-  /** The folder the user chose; notes live in `<folder>/notes`. */
   folder: z.string().min(1),
   order: z.number(),
   archived: z.boolean().default(false),
@@ -56,24 +68,38 @@ const ExportSettingsSchema = z.object({
 
 export const AppConfigSchema = z.object({
   schemaVersion: z.literal(1).default(1),
-  tabs: z.array(TabConfigSchema).default([]),
-  lastOpened: z.object({ tabId: z.string().optional(), pageId: z.string().optional() }).default({}),
+  characters: z.array(CharacterConfigSchema).default([]),
+  lastOpened: z
+    .object({
+      characterId: z.string().optional(),
+      sectionId: z.string().optional(),
+      pageId: z.string().optional(),
+    })
+    .default({}),
   general: z
     .object({
-      gridSize: z.number().default(20),
-      lockToGrid: z.boolean().default(true),
+      lockToLines: z.boolean().default(true),
+      lockToGrid: z.boolean().default(false),
+      gridSize: z.number().default(32),
       inkColour: z.string().default(INK_COLOURS[0].value),
       strokeWidth: z.number().default(4),
       startWithWindows: z.boolean().default(false),
       checkForUpdates: z.boolean().default(true),
+      defaultPhotoFrame: z.enum(["print", "negative", "none"]).default("print"),
+      filmLook: z.boolean().default(true),
+      dateStamp: z.boolean().default(true),
     })
     .default({
-      gridSize: 20,
-      lockToGrid: true,
+      lockToLines: true,
+      lockToGrid: false,
+      gridSize: 32,
       inkColour: INK_COLOURS[0].value,
       strokeWidth: 4,
       startWithWindows: false,
       checkForUpdates: true,
+      defaultPhotoFrame: "print",
+      filmLook: true,
+      dateStamp: true,
     }),
   ai: AiSettingsSchema.default(AiSettingsSchema.parse({})),
   export: ExportSettingsSchema.default(ExportSettingsSchema.parse({})),
@@ -84,6 +110,7 @@ export type ExportSettings = z.infer<typeof ExportSettingsSchema>;
 export type AiSettings = z.infer<typeof AiSettingsSchema>;
 
 export type TabConfig = z.infer<typeof TabConfigSchema>;
+export type CharacterConfig = z.infer<typeof CharacterConfigSchema>;
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export function defaultConfig(): AppConfig {

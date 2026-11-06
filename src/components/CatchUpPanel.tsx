@@ -5,7 +5,7 @@ import type { Ref } from "../ai/payload";
 import { splitRefs, summaryAsText } from "../ai/summary";
 import { PROVIDER_LABEL } from "../model/config";
 import { backend } from "../storage/backend";
-import { useNotebook, visibleTabs } from "../store/notebook";
+import { useNotebook, visibleCharacters } from "../store/notebook";
 import { CloseIcon } from "./Icons";
 
 const SECTION_TONE: Record<string, string> = {
@@ -38,7 +38,7 @@ function Panel() {
   const s = useCatchUp();
   const config = useNotebook((st) => st.config);
   const openSettings = useNotebook((st) => st.setSettingsOpen);
-  const tabs = visibleTabs(config);
+  const tabs = visibleCharacters(config);
   const ai = config.ai;
   const model = ai.models[ai.provider] ?? "";
   const lookAhead = s.lookAheadDays ?? ai.lookAheadDays;
@@ -187,23 +187,32 @@ function ErrorBox() {
 
 function useRefChip() {
   const config = useNotebook((s) => s.config);
-  const tabsState = useNotebook((s) => s.tabs);
-  const openPageAt = useNotebook((s) => s.openPageAt);
+  const charState = useNotebook((s) => s.characters);
   return (ref: Ref | undefined) => {
     if (!ref) return null;
-    const tab = config.tabs.find((t) => t.id === ref.tabId);
-    const st = tabsState[ref.tabId];
+    const char = config.characters.find((c) => c.id === ref.tabId);
+    const ch = charState[ref.tabId];
     const pageId = ref.pageId;
-    const page = st?.status === "ok" ? st.pages.find((p) => p.page.id === pageId) : undefined;
+    let found: { sectionId: string; index: number } | undefined;
+    if (ch?.status === "ok") {
+      for (const [sectionId, pages] of Object.entries(ch.sectionPages)) {
+        const idx = pages.findIndex((p) => p.page.id === pageId);
+        if (idx >= 0) { found = { sectionId, index: idx }; break; }
+      }
+    }
     return (
       <button
         className="source-chip"
-        disabled={!page}
-        title={page ? `Open ${page.page.title || "page"}` : "That page is no longer there"}
-        onClick={() => openPageAt(ref.tabId, pageId, ref.elementId)}
+        disabled={!found}
+        title={found ? "Open page" : "That page is no longer there"}
+        onClick={() => {
+          if (!found) return;
+          useNotebook.getState().openSection(ref.tabId, found.sectionId);
+          useNotebook.getState().goToSpread(Math.floor(found.index / 2));
+        }}
       >
-        <span aria-hidden="true" style={{ background: tab?.colour }} />
-        {tab?.name ?? "Unknown tab"}
+        <span aria-hidden="true" style={{ background: char?.cover }} />
+        {char?.name ?? "Unknown character"}
       </button>
     );
   };

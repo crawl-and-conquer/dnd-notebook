@@ -14,7 +14,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("DnD Notebook hit an error", error, info.componentStack);
+    console.error("Adventurer's Notebook hit an error", error, info.componentStack);
   }
 
   render() {

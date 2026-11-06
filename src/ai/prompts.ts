@@ -5,7 +5,7 @@ export const SECTION_TITLES = [
   "Waiting on others",
 ] as const;
 
-export const SUMMARY_SYSTEM = `You write the catch-up for DnD Notebook, where someone keeps notes for several clients.
+export const SUMMARY_SYSTEM = `You write the catch-up for Adventurer's Notebook, where someone keeps notes for several clients.
 You will be given their notes: pages edited recently and pages left untouched. Every page line starts with a reference in square brackets, such as [r12].
 
 Reply with JSON only, no other text, in exactly this shape:
@@ -24,7 +24,7 @@ Rules:
 - Use only what is in the notes.`;
 
 export function chatSystem(notes: string): string {
-  return `You answer questions about the user's notes in DnD Notebook. Be brief and use UK English and plain sentences, without markdown headings.
+  return `You answer questions about the user's notes in Adventurer's Notebook. Be brief and use UK English and plain sentences, without markdown headings.
 When you mention something from the notes, put its reference in square brackets straight after it, like [r12]. If the notes do not say, say so plainly.
 
 <notes>

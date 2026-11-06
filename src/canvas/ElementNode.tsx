@@ -58,14 +58,6 @@ export function measureTextHeight(text: string, width: number, font: Font): numb
   return h;
 }
 
-function measureTextWidth(text: string, font: Font): number {
-  const k = `w|${JSON.stringify(font)}|${text}`;
-  const hit = measureCache.get(k);
-  if (hit !== undefined) return hit;
-  const w = measurerWith(font).measureSize(text).width;
-  measureCache.set(k, w);
-  return w;
-}
 
 const textFont = (el: Extract<Element, { type: "text" }>): Font =>
   el.heading
@@ -94,7 +86,7 @@ export function checklistRows(el: Extract<Element, { type: "checklist" }>) {
 
 type Props = {
   el: Element;
-  notesPath: string;
+  notebookPath: string;
   draggable: boolean;
   hidden: boolean;
   dragBoundFunc?: (pos: Konva.Vector2d) => Konva.Vector2d;
@@ -126,7 +118,7 @@ function ElementNodeImpl(p: Props) {
 
 export const ElementNode = memo(ElementNodeImpl);
 
-function Body({ el, notesPath, onToggleItem }: Props) {
+function Body({ el, notebookPath, onToggleItem }: Props) {
   const t = useCanvasTheme();
   switch (el.type) {
     case "stroke":
@@ -213,7 +205,7 @@ function Body({ el, notesPath, onToggleItem }: Props) {
     case "checklist":
       return <Checklist el={el} onToggleItem={onToggleItem} />;
     case "image":
-      return <ImageBody el={el} notesPath={notesPath} />;
+      return <ImageBody el={el} notebookPath={notebookPath} />;
   }
 }
 
@@ -234,7 +226,7 @@ function Checklist({
     <>
       {/* Invisible backing so the whole list is clickable and draggable. */}
       <Rect width={el.w} height={total} fill="rgba(0,0,0,0.001)" />
-      {rows.map(({ item, y, textH, textW, fontSize }) => (
+      {rows.map(({ item, y, textW, fontSize }) => (
         <Group key={item.id} y={y} name={`checklist-item ci-${item.id}`}>
           <Group
             name="checkbox"
@@ -285,13 +277,13 @@ function Checklist({
 
 function ImageBody({
   el,
-  notesPath,
+  notebookPath,
 }: {
   el: Extract<Element, { type: "image" }>;
-  notesPath: string;
+  notebookPath: string;
 }) {
   const t = useCanvasTheme();
-  const img = useAsset(notesPath, el.asset);
+  const img = useAsset(notebookPath, el.asset);
   if (!t.images) return null;
   if (!img) {
     return (
