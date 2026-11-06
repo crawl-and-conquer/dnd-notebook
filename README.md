@@ -101,7 +101,7 @@ Pages save 800 ms after the last change, as an atomic write (temp file, then ren
 
 ## Install
 
-Download `DnD.Notebook_<version>_x64-setup.exe` from the [latest release](https://github.com/jakemulholland-code/dnd-notebook/releases/latest) and run it. Windows SmartScreen warns because the installer is not code-signed: choose **More info**, then **Run anyway**. Then open the app from the Start menu.
+Download `DnD.Notebook_<version>_x64-setup.exe` from the [latest release](https://github.com/crawl-and-conquer/dnd-notebook/releases/latest) and run it. Windows SmartScreen warns because the installer is not code-signed: choose **More info**, then **Run anyway**. Then open the app from the Start menu.
 
 The app checks for new versions when it opens (Settings › General › Check for updates on launch) and offers **Install and restart**.
 
