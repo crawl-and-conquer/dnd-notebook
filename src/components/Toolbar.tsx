@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { INK_COLOURS, STROKE_WIDTHS } from "../model/config";
+import { useState } from "react";
+import { STROKE_WIDTHS } from "../model/config";
 import { restyle } from "../canvas/elements";
 import { useCatchUp } from "../ai/catchUp";
 import { useExportDialog } from "./ExportDialog";
@@ -14,16 +15,18 @@ import {
   EraserIcon,
   ExportIcon,
   GearIcon,
-  GridIcon,
   ImageIcon,
   LineIcon,
+  LinesIcon,
   NotebookMark,
+  PaletteIcon,
   PenIcon,
   RedoIcon,
   SelectIcon,
   TextIcon,
   UndoIcon,
 } from "./Icons";
+import { InkPalette } from "./InkPalette";
 
 const TOOLS: { id: ToolId; label: string; key: string; icon: ReactNode }[] = [
   { id: "select", label: "Select", key: "V", icon: <SelectIcon /> },
@@ -51,6 +54,7 @@ export function Toolbar() {
   const general = useNotebook((s) => s.config.general);
   const updateConfig = useNotebook((s) => s.updateConfig);
   const openSettings = useNotebook((s) => s.setSettingsOpen);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const catchUpOpen = useCatchUp((s) => s.open);
   const undo = useNotebook((s) => s.undo);
@@ -93,17 +97,29 @@ export function Toolbar() {
       </div>
 
       <div role="group" aria-label="Ink colour" className="swatches">
-        {INK_COLOURS.map((c) => (
+        {general.inkFavourites.map((v) => (
           <button
-            key={c.id}
+            key={v}
             className="swatch"
-            aria-label={`${c.label} ink`}
-            title={`${c.label} ink`}
-            aria-pressed={general.inkColour.toLowerCase() === c.value.toLowerCase()}
-            style={{ background: c.value }}
-            onClick={() => setGeneral({ inkColour: c.value })}
+            aria-label={`Ink colour ${v}`}
+            title={v}
+            aria-pressed={general.inkColour.toLowerCase() === v.toLowerCase()}
+            style={{ background: v }}
+            onClick={() => setGeneral({ inkColour: v })}
           />
         ))}
+        <div className="palette-anchor">
+          <button
+            className="icon-button"
+            aria-label="Ink palette"
+            title="Ink palette"
+            aria-pressed={paletteOpen}
+            onClick={() => setPaletteOpen((o) => !o)}
+          >
+            <PaletteIcon size={18} />
+          </button>
+          {paletteOpen && <InkPalette onClose={() => setPaletteOpen(false)} />}
+        </div>
       </div>
 
       <div role="group" aria-label="Stroke width" className="width-group">
@@ -121,15 +137,15 @@ export function Toolbar() {
         ))}
       </div>
 
-      <label className="grid-toggle" title="Lock to grid (G)">
+      <label className="grid-toggle" title="Lock to lines (G)">
         <input
           type="checkbox"
-          checked={general.lockToGrid}
-          onChange={(e) => setGeneral({ lockToGrid: e.target.checked })}
+          checked={general.lockToLines}
+          onChange={(e) => setGeneral({ lockToLines: e.target.checked })}
         />
         <span className="switch" aria-hidden="true" />
-        <GridIcon size={18} style={{ color: "var(--mint)" }} />
-        <span>Lock to grid</span>
+        <LinesIcon size={18} style={{ color: "var(--mint)" }} />
+        <span>Lock to lines</span>
       </label>
 
       <div className="toolbar-end">

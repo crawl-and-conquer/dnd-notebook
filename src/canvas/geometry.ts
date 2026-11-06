@@ -8,6 +8,12 @@ export const snapIf = (v: number, grid: number, on: boolean): number => (on ? sn
 export const snapPoint = (p: Point, grid: number, on: boolean): Point =>
   on ? { x: snap(p.x, grid), y: snap(p.y, grid) } : p;
 
+/** Lock-to-lines snap: x to 16 px columns, y to 32 px rows (the ruled lines). */
+export const LINES_X = 16;
+export const LINES_Y = 32;
+export const snapToLines = (p: Point, on: boolean): Point =>
+  on ? { x: snap(p.x, LINES_X), y: snap(p.y, LINES_Y) } : p;
+
 const TAN_22_5 = Math.tan(Math.PI / 8);
 
 /**

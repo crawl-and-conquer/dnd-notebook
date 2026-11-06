@@ -27,7 +27,7 @@ import {
   makeText,
   translate,
 } from "./elements";
-import { boxFromCorners, lockAngle, snap, snapPoint, squareCorner, type Point } from "./geometry";
+import { LINES_Y, boxFromCorners, lockAngle, snap, snapToLines, squareCorner, type Point } from "./geometry";
 import { TextEditor } from "./TextEditor";
 import { PaperBackground, TITLE_X, TITLE_Y, drawOrder } from "./PageScene";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
@@ -54,13 +54,14 @@ type Props = {
   readOnly: boolean;
   notebookPath: string;
   onTitleChange(title: string): void;
+  onActivate?(): void;
 };
 
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement &&
   (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
-export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Props) {
+export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActivate }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
@@ -87,17 +88,14 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
   const general = useNotebook((s) => s.config.general);
   const editElements = useNotebook((s) => s.editElements);
 
-  const grid = general.gridSize;
   // Refs mirror values that stable callbacks need to read.
   const live = useRef({
-    lock: general.lockToGrid,
-    grid,
+    lock: general.lockToLines,
     alt: false,
     selected: selectedIds,
     elements: page.elements,
   });
-  live.current.lock = general.lockToGrid;
-  live.current.grid = grid;
+  live.current.lock = general.lockToLines;
   live.current.selected = selectedIds;
   live.current.elements = page.elements;
   const lastPointer = useRef<Point | null>(null);
@@ -106,9 +104,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
   const colours = useMemo(
     () => ({
       paper: token("--paper"),
-      minor: token("--grid-minor"),
-      major: token("--grid-major"),
-      mint: token("--mint"),
+      mint: token("--gilt"),
       desk: token("--desk"),
     }),
     [],
@@ -266,12 +262,12 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
 
   const dragBound = useCallback((abs: Konva.Vector2d) => {
     const st = stageRef.current;
-    const { lock, alt, grid: g } = live.current;
+    const { lock, alt } = live.current;
     if (!st || !lock || alt) return abs;
     const z = st.scaleX();
     return {
-      x: snap((abs.x - st.x()) / z, g) * z + st.x(),
-      y: snap((abs.y - st.y()) / z, g) * z + st.y(),
+      x: snap((abs.x - st.x()) / z, LINES_Y / 2) * z + st.x(),
+      y: snap((abs.y - st.y()) / z, LINES_Y) * z + st.y(),
     };
   }, []);
 
@@ -356,7 +352,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
     items.push({
       label: "Duplicate",
       onSelect: () => {
-        const copy = duplicate(el, grid, grid);
+        const copy = duplicate(el, LINES_Y, LINES_Y);
         editElements((els) => [...els, copy]);
         setSelected([copy.id]);
       },
@@ -417,7 +413,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
       });
       n.scale({ x: 1, y: 1 });
     }
-    const g = live.current.lock && !live.current.alt ? grid : null;
+    const g = live.current.lock && !live.current.alt ? LINES_Y : null;
     editElements((els) =>
       els.map((el) => (updates.has(el.id) ? applyTransform(el, updates.get(el.id)!, g) : el)),
     );
@@ -425,7 +421,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
 
   // ---------- drawing gestures ----------
 
-  const snapOn = (alt: boolean) => general.lockToGrid && !alt;
+  const snapOn = (alt: boolean) => general.lockToLines && !alt;
 
   const eraseAlong = (from: Point, to: Point) => {
     const stage = stageRef.current;
@@ -555,7 +551,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
           break;
         }
         case "shape": {
-          let end = snapPoint(p, grid, snapOn(evt.altKey));
+          let end = snapToLines(p, snapOn(evt.altKey));
           if (evt.shiftKey && (d.type === "line" || d.type === "arrow")) {
             const l = lockAngle(end.x - d.start.x, end.y - d.start.y);
             end = { x: d.start.x + l.x, y: d.start.y + l.y };
@@ -585,6 +581,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
 
   const onPointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     const evt = e.evt;
+    onActivate?.();
     if (evt.button === 1 || (evt.button === 0 && spaceDown)) {
       evt.preventDefault();
       setPanning({ x: evt.clientX, y: evt.clientY, px: view.current.x, py: view.current.y });
@@ -595,7 +592,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
     if (!p) return;
     lastPointer.current = p;
     live.current.alt = evt.altKey;
-    const snapped = snapPoint(p, grid, snapOn(evt.altKey));
+    const snapped = snapToLines(p, snapOn(evt.altKey));
 
     switch (tool) {
       case "select": {
@@ -693,7 +690,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
       try {
         const { rel, width, height } = await importImage(notebookPath, blob);
         const { w, h } = placedSize(width, height);
-        const p = snapPoint(at, live.current.grid, live.current.lock);
+        const p = snapToLines(at, live.current.lock);
         const el = makeImage(rel, p.x, p.y, w, h);
         editElements((els) => [...els, el]);
         useTools.getState().setTool("select");
@@ -727,7 +724,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
       const text = e.clipboardData.getData("text/plain");
       if (text.trim()) {
         e.preventDefault();
-        const p = snapPoint(at, grid, general.lockToGrid);
+        const p = snapToLines(at, general.lockToLines);
         const el = makeText(
           p.x,
           p.y,
@@ -749,7 +746,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
     const at = toPage(e.nativeEvent) ?? viewCentre();
     void (async () => {
       for (let i = 0; i < files.length; i++)
-        await placeImage(files[i], { x: at.x + i * grid, y: at.y + i * grid });
+        await placeImage(files[i], { x: at.x + i * LINES_Y, y: at.y + i * LINES_Y });
     })();
   };
 
@@ -800,7 +797,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
         if (!sel.size) return;
         const copies = live.current.elements
           .filter((el) => sel.has(el.id))
-          .map((el) => duplicate(el, grid, grid));
+          .map((el) => duplicate(el, LINES_Y, LINES_Y));
         store.editElements((els) => [...els, ...copies]);
         setSelected(copies.map((c) => c.id));
       } else if ((e.key === "Delete" || e.key === "Backspace") && sel.size) {
@@ -809,7 +806,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
         setSelected([]);
       } else if (e.key.startsWith("Arrow") && sel.size) {
         e.preventDefault();
-        const step = e.shiftKey ? 1 : grid;
+        const step = e.shiftKey ? 1 : LINES_Y;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
         store.editElements((els) => els.map((el) => (sel.has(el.id) ? translate(el, dx, dy) : el)));
@@ -829,7 +826,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [applyView, setTool, setSelected, grid, readOnly]);
+  }, [applyView, setTool, setSelected, readOnly]);
 
   // ---------- render ----------
 
@@ -937,7 +934,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange }: Prop
         {/* Two layers only: each layer is a full-size canvas the browser composites every frame. */}
         <Layer ref={layerRef} listening={interactive}>
           <Group ref={contentRef}>
-            <PaperBackground grid={grid} />
+            <PaperBackground />
             {elementNodes}
           </Group>
         </Layer>

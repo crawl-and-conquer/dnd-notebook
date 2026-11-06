@@ -65,7 +65,6 @@ async function pageSnapshots(
       theme: "screen",
       pixelRatio: 1,
       includeImages: true,
-      grid: s.config.general.gridSize,
     });
     images.push(bytesToBase64(png));
     const ref = Object.entries(ctx.refs).find(([, r]) => r.pageId === page.id && !r.elementId)?.[0];

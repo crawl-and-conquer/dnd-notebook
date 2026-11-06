@@ -176,6 +176,31 @@ export const PagesIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const PaletteIcon = (p: IconProps) => (
+  <Svg {...p} strokeWidth={1.5}>
+    <circle cx="10" cy="10" r="7.5" />
+    <circle cx="7" cy="8" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="13" cy="8" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="13.5" r="1.3" fill="currentColor" stroke="none" />
+    <circle cx="7" cy="11.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none" />
+  </Svg>
+);
+export const PinIcon = (p: IconProps) => (
+  <Svg {...p} strokeWidth={1.6}>
+    <path d="M12.5 3L17 7.5l-5 1-4 4-1-1 1-4L3 12l5-9z" />
+    <line x1="3" y1="17" x2="8.5" y2="11.5" />
+  </Svg>
+);
+export const LinesIcon = (p: IconProps) => (
+  <Svg {...p} strokeWidth={1.5}>
+    <line x1="2.5" y1="6" x2="17.5" y2="6" />
+    <line x1="2.5" y1="10" x2="17.5" y2="10" />
+    <line x1="2.5" y1="14" x2="17.5" y2="14" />
+    <line x1="4" y1="2.5" x2="4" y2="17.5" strokeOpacity={0.4} />
+  </Svg>
+);
+
 export function NotebookMark() {
   return (
     <svg

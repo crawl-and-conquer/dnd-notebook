@@ -74,7 +74,6 @@ export async function runExport(
   const md = opts.format !== "pdf";
   const pdf = opts.format !== "markdown";
   const colours = pdfColours(opts.printerFriendly);
-  const grid = useNotebook.getState().config.general.gridSize;
   const tabFolder = uniqueNamer();
   let files = 0;
   let done = 0;
@@ -105,7 +104,6 @@ export async function runExport(
         theme: opts.printerFriendly ? "print" : "screen",
         pixelRatio: 2,
         includeImages: opts.includeImages,
-        grid,
       });
 
       if (md) {

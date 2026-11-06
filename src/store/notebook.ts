@@ -73,7 +73,9 @@ type NotebookStore = {
   notice: string | null;
   flash: { elementId: string; nonce: number } | null;
   historyTick: number;
+  pageOffset: 0 | 1;
 
+  setPageOffset(offset: 0 | 1): void;
   init(): Promise<void>;
   updateConfig(mutate: (c: AppConfig) => AppConfig): Promise<void>;
   addCharacter(input: {
@@ -145,7 +147,7 @@ export function currentSpreadPages(
 
 /** The left page (or right if no left), for tools and element edits. */
 export function currentPageOf(
-  s: Pick<NotebookStore, "view" | "characters">,
+  s: Pick<NotebookStore, "view" | "characters" | "pageOffset">,
 ): { characterId: string; sectionId: string; loaded: LoadedPage; index: number; count: number } | null {
   if (!("characterId" in s.view)) return null;
   const { characterId, sectionId, spreadIndex } = s.view;
@@ -153,7 +155,7 @@ export function currentPageOf(
   if (!ch || ch.status !== "ok") return null;
   const pages = ch.sectionPages[sectionId] ?? [];
   if (pages.length === 0) return null;
-  const idx = Math.min(spreadIndex * 2, pages.length - 1);
+  const idx = Math.min(spreadIndex * 2 + s.pageOffset, pages.length - 1);
   return { characterId, sectionId, loaded: pages[idx], index: idx, count: pages.length };
 }
 
@@ -317,6 +319,7 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     notice: null,
     flash: null,
     historyTick: 0,
+    pageOffset: 0,
 
     async init() {
       const config = parseConfig(await backend.readAppConfig());
@@ -501,6 +504,10 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       set({ notice: null });
     },
 
+    setPageOffset(offset) {
+      set({ pageOffset: offset });
+    },
+
     goToSpread(index) {
       const view = get().view;
       if (!("characterId" in view)) return;
@@ -508,7 +515,7 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       if (!ch || ch.status !== "ok") return;
       const pages = ch.sectionPages[view.sectionId] ?? [];
       const max = Math.max(0, Math.ceil(pages.length / 2) - 1);
-      set({ view: { ...view, spreadIndex: Math.max(0, Math.min(index, max)) } });
+      set({ view: { ...view, spreadIndex: Math.max(0, Math.min(index, max)) }, pageOffset: 0 });
     },
 
     goToSpreadDelta(delta) {

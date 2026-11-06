@@ -85,7 +85,7 @@ export function StatusBar() {
       )}
       {"characterId" in view && (
         <span>
-          {general.lockToGrid ? `Snapping to ${general.gridSize} px grid` : "Grid snapping off"}
+          {general.lockToLines ? "Snapping to lines" : "Line snapping off"}
         </span>
       )}
       <span

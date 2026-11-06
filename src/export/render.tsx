@@ -11,8 +11,6 @@ export type RenderOptions = {
   /** 2 for exports (SPEC: rendered from Konva at 2x). */
   pixelRatio: number;
   includeImages: boolean;
-  grid: number;
-  today?: string;
 };
 
 // setTimeout rather than requestAnimationFrame, which pauses in a hidden window.
@@ -68,7 +66,6 @@ export async function renderPagePng(
             <PageScene
               page={page}
               notebookPath={notebookPath}
-              grid={opts.grid}
             />
           </Layer>
         </Stage>

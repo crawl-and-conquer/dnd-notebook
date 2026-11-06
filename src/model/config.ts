@@ -1,13 +1,40 @@
 import { z } from "zod";
 
-/** Default favourite ink colours in toolbar order. */
+/** Full 20-ink set for the palette flyout. */
 export const INK_COLOURS = [
-  { id: "iron-gall", label: "Iron gall", value: "#2b2622" },
-  { id: "oxblood", label: "Oxblood", value: "#8e2a2a" },
+  { id: "iron-gall",     label: "Iron gall",    value: "#2b2622" },
+  { id: "walnut",        label: "Walnut",        value: "#4a3424" },
+  { id: "sepia",         label: "Sepia",         value: "#6b4a2e" },
+  { id: "oxblood",       label: "Oxblood",       value: "#8e2a2a" },
+  { id: "vermilion",     label: "Vermilion",     value: "#c4452c" },
+  { id: "rust",          label: "Rust",          value: "#a85a2a" },
+  { id: "amber",         label: "Amber",         value: "#d07a2e" },
+  { id: "ochre",         label: "Ochre",         value: "#b8902c" },
+  { id: "olive",         label: "Olive",         value: "#6e7a2e" },
+  { id: "moss",          label: "Moss",          value: "#4f6b32" },
+  { id: "forest",        label: "Forest",        value: "#2f5d46" },
+  { id: "teal",          label: "Teal",          value: "#2d7a7a" },
   { id: "prussian-blue", label: "Prussian blue", value: "#2a4e7f" },
-  { id: "moss", label: "Moss", value: "#4f6b32" },
-  { id: "sepia", label: "Sepia", value: "#6b4a2e" },
-  { id: "violet", label: "Violet", value: "#6d4a8a" },
+  { id: "ultramarine",   label: "Ultramarine",   value: "#3b5bb5" },
+  { id: "indigo",        label: "Indigo",        value: "#3e3a86" },
+  { id: "violet",        label: "Violet",        value: "#6d4a8a" },
+  { id: "plum",          label: "Plum",          value: "#7b3b5e" },
+  { id: "rose",          label: "Rose",          value: "#b85a7a" },
+  { id: "slate",         label: "Slate",         value: "#5a6470" },
+  { id: "gilt",          label: "Gilt",          value: "#c9a54a" },
+] as const;
+
+/** Default 6 favourites shown on the toolbar. */
+export const DEFAULT_FAVOURITES = ["#2b2622", "#8e2a2a", "#2a4e7f", "#4f6b32", "#6b4a2e", "#6d4a8a"];
+
+/** Paint-brush highlighter colours (semi-transparent, drawn under everything). */
+export const HIGHLIGHTER_COLOURS = [
+  { id: "sunlight", label: "Sunlight", value: "rgba(240,200,60,.55)" },
+  { id: "sage",     label: "Sage",     value: "rgba(150,195,110,.5)" },
+  { id: "sky",      label: "Sky",      value: "rgba(120,170,220,.45)" },
+  { id: "blush",    label: "Blush",    value: "rgba(230,130,150,.45)" },
+  { id: "lilac",    label: "Lilac",    value: "rgba(170,140,210,.45)" },
+  { id: "ember",    label: "Ember",    value: "rgba(240,160,90,.5)" },
 ] as const;
 
 export const STROKE_WIDTHS = [2, 4, 8] as const;
@@ -79,9 +106,9 @@ export const AppConfigSchema = z.object({
   general: z
     .object({
       lockToLines: z.boolean().default(true),
-      lockToGrid: z.boolean().default(false),
-      gridSize: z.number().default(32),
       inkColour: z.string().default(INK_COLOURS[0].value),
+      inkFavourites: z.array(z.string()).default(DEFAULT_FAVOURITES),
+      inkMixes: z.array(z.string()).max(12).default([]),
       strokeWidth: z.number().default(4),
       startWithWindows: z.boolean().default(false),
       checkForUpdates: z.boolean().default(true),
@@ -91,9 +118,9 @@ export const AppConfigSchema = z.object({
     })
     .default({
       lockToLines: true,
-      lockToGrid: false,
-      gridSize: 32,
       inkColour: INK_COLOURS[0].value,
+      inkFavourites: DEFAULT_FAVOURITES,
+      inkMixes: [],
       strokeWidth: 4,
       startWithWindows: false,
       checkForUpdates: true,

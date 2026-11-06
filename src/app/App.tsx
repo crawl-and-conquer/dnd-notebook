@@ -1,8 +1,5 @@
 import { useEffect } from "react";
-import { Layer, Stage } from "react-konva";
 import { PaperStage } from "../canvas/PaperStage";
-import { PageScene } from "../canvas/PageScene";
-import { ThemeContext, screenTheme } from "../canvas/theme";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StatusBar } from "../components/StatusBar";
 import { Shelf } from "../components/Shelf";
@@ -14,7 +11,6 @@ import { TOOL_KEYS, useTools } from "../store/tools";
 import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
 import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
-import { PAGE_HEIGHT, PAGE_WIDTH } from "../model/page";
 import { useUpdates } from "./updates";
 import { useShallow } from "zustand/react/shallow";
 
@@ -145,7 +141,7 @@ export function App() {
       if (key === "g") {
         void s.updateConfig((c) => ({
           ...c,
-          general: { ...c.general, lockToGrid: !c.general.lockToGrid },
+          general: { ...c.general, lockToLines: !c.general.lockToLines },
         }));
         return;
       }
@@ -184,9 +180,9 @@ function MainView() {
   const config = useNotebook((s) => s.config);
   const spread = useNotebook(useShallow(currentSpreadPages));
   const updatePage = useNotebook((s) => s.updatePage);
+  const setPageOffset = useNotebook((s) => s.setPageOffset);
   const openSettings = useNotebook((s) => s.setSettingsOpen);
   const openNewChar = useNewCharacterDialog((s) => s.setOpen);
-  const grid = useNotebook((s) => s.config.general.gridSize);
 
   const hasCharacters = config.characters.some((c) => !c.archived);
   const characterId = "characterId" in view ? view.characterId : null;
@@ -300,22 +296,19 @@ function MainView() {
                 readOnly={left.readOnly}
                 notebookPath={ch.notebookPath}
                 onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
+                onActivate={() => setPageOffset(0)}
               />
             </div>
           )}
           {right ? (
             <div className="spread-page spread-right">
-              <ThemeContext.Provider value={{ ...screenTheme, images: true }}>
-                <Stage width={PAGE_WIDTH} height={PAGE_HEIGHT} listening={false}>
-                  <Layer>
-                    <PageScene
-                      page={right.page}
-                      notebookPath={ch.notebookPath}
-                      grid={grid}
-                    />
-                  </Layer>
-                </Stage>
-              </ThemeContext.Provider>
+              <PaperStage
+                page={right.page}
+                readOnly={right.readOnly}
+                notebookPath={ch.notebookPath}
+                onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
+                onActivate={() => setPageOffset(1)}
+              />
             </div>
           ) : (
             <div className="spread-page spread-right spread-blank" aria-hidden="true" />

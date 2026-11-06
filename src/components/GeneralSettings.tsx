@@ -5,8 +5,6 @@ import { INK_COLOURS, STROKE_WIDTHS, type AppConfig } from "../model/config";
 import { backend } from "../storage/backend";
 import { useNotebook } from "../store/notebook";
 
-const GRID_SIZES = [10, 20, 25, 40];
-
 export function GeneralSection() {
   const general = useNotebook((s) => s.config.general);
   const updateConfig = useNotebook((s) => s.updateConfig);
@@ -60,26 +58,13 @@ export function GeneralSection() {
       <p className="lead">App settings are stored in {configPath || "the app data folder"}.</p>
 
       <div className="settings-grid">
-        <label className="field">
-          Grid size
-          <select
-            value={general.gridSize}
-            onChange={(e) => set({ gridSize: Number(e.target.value) })}
-          >
-            {GRID_SIZES.map((g) => (
-              <option key={g} value={g}>
-                {g} px{g === 20 ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="check-row">
           <input
             type="checkbox"
-            checked={general.lockToGrid}
-            onChange={(e) => set({ lockToGrid: e.target.checked })}
+            checked={general.lockToLines}
+            onChange={(e) => set({ lockToLines: e.target.checked })}
           />
-          Lock to grid by default
+          Lock to lines by default
         </label>
         <div className="field">
           <span id="default-ink">Default ink colour</span>
