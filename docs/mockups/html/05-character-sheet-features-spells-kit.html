@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Character sheet: features, spells, kit</title>
+<style>
+@font-face{font-family:'Caveat';src:url('fonts/Caveat-Variable.ttf') format('truetype');font-weight:400 700}
+@font-face{font-family:'Alegreya';src:url('fonts/Alegreya-Variable.ttf') format('truetype');font-weight:400 900}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Regular.ttf') format('truetype');font-weight:400}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Medium.ttf') format('truetype');font-weight:500 600}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Bold.ttf') format('truetype');font-weight:700}
+@font-face{font-family:'Share Tech Mono';src:url('fonts/ShareTechMono-Regular.ttf') format('truetype')}
+
+body{margin:0}
+*{box-sizing:border-box}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;background:#2b2019;background-image:radial-gradient(ellipse at 55% 45%,#3b2c22 0%,#2b2019 55%,#1d1611 100%);color:#f1e6d2;font-family:'Alegreya Sans',system-ui,sans-serif;font-size:14px;overflow:hidden;position:relative}
+.tb{height:64px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:#1c1510;border-bottom:1px solid rgba(241,230,210,.08)}
+.brand{display:flex;align-items:center;gap:9px;font-family:'Alegreya',serif;font-weight:700;font-size:19px;color:#f1e6d2;white-space:nowrap;width:140px}
+.brand svg{width:24px;height:24px;fill:none;stroke:#d4a85a;stroke-width:1.6;stroke-linejoin:round}
+.grp{display:flex;align-items:center;gap:2px;padding:3px;background:rgba(241,230,210,.06);border-radius:12px}
+.ib{width:40px;height:40px;border:0;background:transparent;border-radius:9px;color:#e6d9bf;display:grid;place-items:center;padding:0;cursor:pointer}
+.ib:hover{background:rgba(241,230,210,.1)}
+.ib.on{background:#d4a85a;color:#1c1510}
+.ib svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sw{width:34px;height:40px;border:0;background:transparent;border-radius:9px;display:grid;place-items:center;padding:0;cursor:pointer}
+.sw span{display:block;width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.16)}
+.sw.on span{box-shadow:0 0 0 2px #1c1510,0 0 0 4px #d4a85a}
+.wd{width:36px;height:40px;border:0;background:transparent;border-radius:9px;display:grid;place-items:center;padding:0;cursor:pointer}
+.wd span{display:block;border-radius:50%;background:#e6d9bf}
+.wd.on{background:rgba(212,168,90,.22)}
+.toggle{display:flex;align-items:center;gap:8px;padding:0 6px;height:40px;color:#e6d9bf;white-space:nowrap;font-size:14px}
+.switch{width:34px;height:20px;border-radius:10px;background:#d4a85a;position:relative;flex:none}
+.switch::after{content:'';position:absolute;right:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#1c1510}
+.end{margin-left:auto;display:flex;gap:4px;align-items:center}
+.main{flex:1;display:flex;min-height:0}
+.shelf{width:104px;flex:none;padding:16px 0 16px 18px;display:flex;flex-direction:column;gap:12px;border-right:1px solid rgba(241,230,210,.06)}
+.shelf h2{margin:0;font:700 11px 'Alegreya Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#bfae90}
+.spine{width:60px;height:224px;border:0;border-radius:3px 7px 7px 3px;padding:14px 0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;color:#ecd398;cursor:pointer;box-shadow:inset -6px 0 10px rgba(0,0,0,.25),inset 2px 0 0 rgba(255,255,255,.08),2px 3px 8px rgba(0,0,0,.35)}
+.spine .nm{writing-mode:vertical-rl;transform:rotate(180deg);font:700 18px 'Alegreya',serif;letter-spacing:.05em}
+.spine .bd{width:100%;height:9px;border-top:2px solid rgba(236,211,152,.55);border-bottom:2px solid rgba(236,211,152,.55)}
+.spine.on{transform:translateX(16px)}
+.spine.new{background:transparent;border:1.5px dashed rgba(241,230,210,.28);box-shadow:none;height:132px;color:#bfae90;justify-content:center;gap:8px}
+.spine.new .nm{font:600 14px 'Alegreya Sans',sans-serif;letter-spacing:.04em}
+.desk{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-width:0;padding-right:40px}
+.book{position:relative;padding:10px;border-radius:14px;background:#46562f;background-image:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.08),transparent 60%),repeating-linear-gradient(35deg,rgba(0,0,0,.04) 0 2px,transparent 2px 5px);box-shadow:0 34px 70px rgba(0,0,0,.5),0 6px 16px rgba(0,0,0,.35)}
+.spread{display:flex;position:relative;z-index:1}
+.spread::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(90,60,30,.25)}
+.page{width:570px;height:720px;position:relative;overflow:hidden;background-color:#f3e8d0;background-image:linear-gradient(90deg,transparent 71px,rgba(201,74,62,.55) 71px,rgba(201,74,62,.55) 72.5px,transparent 72.5px,transparent 75px,rgba(201,74,62,.32) 75px,rgba(201,74,62,.32) 76px,transparent 76px),linear-gradient(#f3e8d0,#f3e8d0),repeating-linear-gradient(180deg,transparent 0,transparent 31px,rgba(201,96,84,.30) 31px,rgba(201,96,84,.30) 32px),radial-gradient(ellipse at 35% 25%,rgba(255,251,238,.7),rgba(236,220,186,.0) 70%);background-size:100% 100%,100% 88px,100% 32px,100% 100%;background-repeat:no-repeat,no-repeat,repeat,no-repeat}
+.page.l{border-radius:6px 2px 2px 6px;box-shadow:inset -46px 0 44px -34px rgba(110,70,25,.5),-1px 0 0 #e4d5b5,-2px 1px 0 #d6c4a0,-3px 2px 0 #e4d5b5,-4px 3px 0 #cbb892}
+.page.r{border-radius:2px 6px 6px 2px;box-shadow:inset 46px 0 44px -34px rgba(110,70,25,.5),1px 0 0 #e4d5b5,2px 1px 0 #d6c4a0,3px 2px 0 #e4d5b5,4px 3px 0 #cbb892}
+.phead{position:absolute;left:92px;right:30px;top:0;height:88px;display:flex;align-items:flex-end;justify-content:space-between;padding-bottom:12px;gap:12px}
+.ptitle{margin:0;font:700 30px/1 'Alegreya',serif;color:#3a2a1e}
+.pmeta{font:500 13px 'Alegreya Sans',sans-serif;color:#6f5a45;white-space:nowrap}
+.lbl{font:700 10.5px/1 'Alegreya Sans',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#a0493e}
+.hb{border:2px solid #3a2e26;border-radius:255px 15px 225px 15px/15px 225px 15px 255px;background:rgba(255,250,236,.45)}
+.hb2{border:2px solid #3a2e26;border-radius:15px 225px 15px 255px/255px 15px 225px 15px;background:rgba(255,250,236,.45)}
+.mid{font:700 30px/1 'Caveat',cursive;color:#2b2622}
+.body{position:absolute;left:92px;right:30px;top:96px}
+.hw{font-family:'Caveat',cursive;font-size:23px;line-height:32px;color:#2b2622;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hw b{font-weight:700}
+.hw .n{color:#6b4a2e;font-size:20px}
+.sec{height:32px;display:flex;align-items:flex-end;padding-bottom:7px;gap:10px}
+.bub{display:inline-block;width:17px;height:17px;border:2px solid #3a2e26;border-radius:50%;margin-left:5px;vertical-align:-2px}
+.bub.used{background:#3a2e26}
+.coin{display:flex;flex-direction:column;align-items:center;gap:3px}
+.coin span{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font:700 20px/1 'Caveat',cursive;color:#2b2622;border:2px solid #3a2e26}
+.kit{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+.kit p{margin:0;height:32px;display:flex;justify-content:space-between;font-family:'Caveat',cursive;font-size:22px;line-height:32px;color:#2b2622}
+.kit p i{font-style:normal;color:#6b4a2e;font-size:19px}
+.tabs{position:absolute;left:calc(100% - 8px);top:26px;display:flex;flex-direction:column;gap:5px;z-index:0}
+.tab{width:48px;border:0;border-radius:0 9px 9px 0;padding:16px 0 16px 10px;writing-mode:vertical-rl;font:700 13px 'Alegreya Sans',sans-serif;letter-spacing:.04em;color:#3a2a1e;text-align:center;cursor:pointer;box-shadow:2px 2px 4px rgba(0,0,0,.28)}
+.tab.on{background:#f3e8d0;width:56px;color:#8e2a2a}
+.tab.add{background:transparent;border:1.5px dashed rgba(241,230,210,.35);color:#e6d9bf;padding:10px 0 10px 8px;box-shadow:none;writing-mode:horizontal-tb;font-size:20px;height:44px}
+.status{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px 0 122px;background:#1c1510;border-top:1px solid rgba(241,230,210,.08);color:#cdbd9f;font-size:13px}
+.status .nav{display:flex;align-items:center;gap:10px}
+.sb{height:30px;border:0;border-radius:8px;background:rgba(241,230,210,.07);color:#e6d9bf;padding:0 10px;display:inline-flex;align-items:center;gap:6px;font:500 13px 'Alegreya Sans',sans-serif;cursor:pointer}
+.sb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dot{width:7px;height:7px;border-radius:50%;background:#8fb36a;display:inline-block;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="tb">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"></path><path d="M12 6l5 9H7z"></path><path d="M3 7l4 8M21 7l-4 8M7 15l5 7 5-7M12 2v4"></path></svg><span>Notebook</span></div>
+    <div class="grp" role="toolbar" aria-label="Drawing tools">
+      <button class="ib on" aria-label="Select (V)"><svg viewBox="0 0 24 24"><path d="M6 3l13 7-6 2-2.5 6z"></path></svg></button>
+      <button class="ib" aria-label="Pen (P)"><svg viewBox="0 0 24 24"><path d="M20 4c-7 1-12 6-14 13l-2 3 3-2c7-2 12-7 13-14z"></path><path d="M8.5 15.5l5-5"></path></svg></button>
+      <button class="ib" aria-label="Paint brush (B)"><svg viewBox="0 0 24 24"><path d="M19 3l2 2-9 9-2-2z"></path><path d="M9.5 13.5c-3 0-5 1.8-5 4.5 0 1-1 2.5-2 2.5 4 1 8 0 8.5-3.5"></path></svg></button>
+      <button class="ib" aria-label="Line (L)"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"></path></svg></button>
+      <button class="ib" aria-label="Arrow (A)"><svg viewBox="0 0 24 24"><path d="M5 19L19 5M10 5h9v9"></path></svg></button>
+      <button class="ib" aria-label="Box (R)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.5"></rect></svg></button>
+      <button class="ib" aria-label="Circle (O)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle></svg></button>
+      <button class="ib" aria-label="Text (T)"><svg viewBox="0 0 24 24"><path d="M5 7V4h14v3M12 4v16M9 20h6"></path></svg></button>
+      <button class="ib" aria-label="Paste or insert image (I)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M21 16l-5-5-9 8"></path></svg></button>
+      <button class="ib" aria-label="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M9 20h11M4.5 15.5l9-10 6.5 6-8.5 8.5H8.5z"></path><path d="M9 11l6 5.5"></path></svg></button>
+    </div>
+    <div class="grp" role="group" aria-label="Ink colour">
+      <button class="sw on" aria-label="Iron gall ink"><span style="background:#2b2622"></span></button>
+      <button class="sw" aria-label="Oxblood ink"><span style="background:#8e2a2a"></span></button>
+      <button class="sw" aria-label="Prussian blue ink"><span style="background:#2a4e7f"></span></button>
+      <button class="sw" aria-label="Moss ink"><span style="background:#4f6b32"></span></button>
+      <button class="sw" aria-label="Sepia ink"><span style="background:#6b4a2e"></span></button>
+      <button class="sw" aria-label="Violet ink"><span style="background:#6d4a8a"></span></button>
+      <button class="ib" aria-label="All inks and highlighters"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-1.2-1-1.6-1-2.6 0-.9.8-1.4 1.8-1.4H17a4 4 0 004-4c0-4.4-4-8-9-8z"></path><circle cx="7.5" cy="11.5" r="1"></circle><circle cx="10" cy="7.5" r="1"></circle><circle cx="15" cy="7.5" r="1"></circle></svg></button>
+    </div>
+    <div class="grp" role="group" aria-label="Stroke width">
+      <button class="wd on" aria-label="Fine nib"><span style="width:4px;height:4px"></span></button>
+      <button class="wd" aria-label="Medium nib"><span style="width:8px;height:8px"></span></button>
+      <button class="wd" aria-label="Broad nib"><span style="width:13px;height:13px"></span></button>
+    </div>
+    <label class="toggle"><span class="switch" aria-hidden="true"></span><span>Lock to lines</span></label>
+    <div class="end">
+      <button class="ib" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg></button>
+      <button class="ib" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 000 12h3"></path></svg></button>
+      <button class="ib" aria-label="Import character sheet"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M4 16v4h16v-4"></path></svg></button>
+      <button class="ib" aria-label="Handwriting builder"><svg viewBox="0 0 24 24"><path d="M3 19l5-14 5 14M5 14h6"></path><path d="M14 17c2-1 2.5-4 4.5-4 1.5 0 1 3 2.5 3"></path></svg></button>
+      <button class="ib" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"></path></svg></button>
+    </div>
+  </header>
+
+  <div class="main">
+    <nav class="shelf" aria-label="Characters">
+      <h2>Party</h2>
+      <button class="spine on" style="background:#46562f" aria-current="true"><span class="bd"></span><span class="nm">Cosworth</span><span class="bd"></span></button>
+      <button class="spine new" aria-label="New character"><span style="font-size:22px;line-height:1">+</span><span class="nm">New</span></button>
+    </nav>
+
+    <section class="desk">
+      <div class="book">
+        <div class="spread">
+          <article class="page l">
+            <div class="phead">
+              <h1 class="ptitle">Features &amp; traits</h1>
+              <div class="pmeta">Sheet 2 of 2</div>
+            </div>
+            <div class="body">
+              <div class="sec"><span class="lbl">Druid</span></div>
+              <p class="hw"><b>Wild Shape</b> <span class="n">bonus action · beast up to CR 1/4, no fly</span></p>
+              <p class="hw"><b>Wild Companion</b> <span class="n">slot or Wild Shape → Find Familiar (fey)</span></p>
+              <p class="hw"><b>Circle of the Land</b> <span class="n">temperate</span></p>
+              <p class="hw"><b>Land's Aid</b> <span class="n">10 ft sphere · 2d6 necrotic, heal one 2d6</span></p>
+              <p class="hw"><b>Druidic</b> <span class="n">hidden messages · Speak with Animals</span></p>
+              <p class="hw"><b>Warden</b> <span class="n">martial weapons, medium armour</span></p>
+              <div class="sec"><span class="lbl">Konomin (Bokkurin)</span></div>
+              <p class="hw"><b>Heartseed</b> <span class="n">tend it on a long rest for a little magic</span></p>
+              <p class="hw"><b>Sturdy Shell</b> <span class="n">reaction: advantage on a Con save</span></p>
+              <p class="hw" style="padding-left:24px"><span class="n">uses</span><span class="bub"></span><span class="bub"></span> <span class="n">back on a long rest</span></p>
+              <p class="hw"><b>Forest Guardian</b> <span class="n">· <b>Greatberry</b> (Goodberry, always)</span></p>
+              <div class="sec"><span class="lbl">Feats</span></div>
+              <p class="hw"><b>Tough</b> <span class="n">+6 HP now, +2 every level after</span></p>
+              <p class="hw"><b>Farmer</b> <span class="n">ability scores +1 / +1 / +1</span></p>
+            </div>
+          </article>
+
+          <article class="page r">
+            <div class="phead">
+              <h1 class="ptitle">Spells &amp; kit</h1>
+              <div class="pmeta">Druid · Wisdom</div>
+            </div>
+            <div style="position:absolute;left:92px;right:30px;top:100px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+              <div class="hb" style="height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span class="mid">WIS</span><span class="lbl">Ability</span></div>
+              <div class="hb2" style="height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span class="mid">15</span><span class="lbl">Save DC</span></div>
+              <div class="hb" style="height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span class="mid">+7</span><span class="lbl">Spell attack</span></div>
+            </div>
+            <div class="body" style="top:192px">
+              <p class="hw"><span class="lbl" style="margin-right:10px">Slots</span>1st <span class="bub used"></span><span class="bub"></span><span class="bub"></span><span class="bub"></span>&#160;&#160;&#160;2nd <span class="bub"></span><span class="bub"></span></p>
+              <p class="hw"><span class="lbl" style="margin-right:10px">Cantrips</span>Shillelagh · Guidance · Shocking Grasp</p>
+              <p class="hw"><span class="lbl" style="margin-right:10px">Always</span>Goodberry · Speak with Animals</p>
+              <p class="hw" style="color:#2a4e7f">Full druid list → <u>Spells, pages 5–6</u></p>
+              <div class="sec" style="margin-top:0"><span class="lbl">Coin</span><span class="pmeta" style="margin-left:auto;font-size:12px">carrying 80 lb of 135</span></div>
+              <div style="display:flex;gap:14px;height:64px;align-items:center">
+                <div class="coin"><span style="background:#d9a57a">0</span><b class="lbl">CP</b></div>
+                <div class="coin"><span style="background:#e2e0d6;border-color:#2b2622">68</span><b class="lbl">SP</b></div>
+                <div class="coin"><span style="background:#d7d2b8">0</span><b class="lbl">EP</b></div>
+                <div class="coin"><span style="background:#e6c66a">0</span><b class="lbl">GP</b></div>
+                <div class="coin"><span style="background:#e9ecef">0</span><b class="lbl">PP</b></div>
+              </div>
+              <div class="sec"><span class="lbl">Pack</span></div>
+              <div class="kit">
+                <p>Shield <i>6 lb</i></p><p>Leather <i>10 lb</i></p>
+                <p>Staff <i>4 lb</i></p><p>Sickle <i>2 lb</i></p>
+                <p>Herbalism kit <i>3 lb</i></p><p>Backpack <i>5 lb</i></p>
+                <p>Rations ×10 <i>20 lb</i></p><p>Torches ×10 <i>10 lb</i></p>
+                <p>Oil ×2 · Rope <i>7 lb</i></p><p>Bedroll · Tinderbox <i>8 lb</i></p>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Cosworth's sections">
+          <button class="tab" role="tab" style="background:#e3d6b6">Sessions</button>
+          <button class="tab" role="tab" style="background:#d8c29a">Backstory</button>
+          <button class="tab" role="tab" style="background:#d9b7a2">Likes</button>
+          <button class="tab" role="tab" style="background:#c9b6a8">Dislikes</button>
+          <button class="tab" role="tab" style="background:#c6c7a0">Wants</button>
+          <button class="tab" role="tab" style="background:#b9c3ae">Notes</button>
+          <button class="tab on" role="tab" aria-selected="true">Character sheet</button>
+          <button class="tab add" aria-label="Add a section">+</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="status">
+    <div class="nav">
+      <button class="sb"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg>Stats &amp; skills</button>
+      <span>Pages 3–4 of 6</span>
+      <button class="sb">Spell list<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div>
+    <div class="nav">
+      <span>Tap a bubble to spend a slot or use</span>
+      <span>·</span>
+      <span><span class="dot"></span>Saved</span>
+      <span>·</span>
+      <span>100%</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

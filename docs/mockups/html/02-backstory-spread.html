@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Backstory spread</title>
+<style>
+@font-face{font-family:'Caveat';src:url('fonts/Caveat-Variable.ttf') format('truetype');font-weight:400 700}
+@font-face{font-family:'Alegreya';src:url('fonts/Alegreya-Variable.ttf') format('truetype');font-weight:400 900}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Regular.ttf') format('truetype');font-weight:400}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Medium.ttf') format('truetype');font-weight:500 600}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Bold.ttf') format('truetype');font-weight:700}
+@font-face{font-family:'Share Tech Mono';src:url('fonts/ShareTechMono-Regular.ttf') format('truetype')}
+
+body{margin:0}
+*{box-sizing:border-box}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;background:#2b2019;background-image:radial-gradient(ellipse at 55% 45%,#3b2c22 0%,#2b2019 55%,#1d1611 100%);color:#f1e6d2;font-family:'Alegreya Sans',system-ui,sans-serif;font-size:14px;overflow:hidden;position:relative}
+.tb{height:64px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:#1c1510;border-bottom:1px solid rgba(241,230,210,.08)}
+.brand{display:flex;align-items:center;gap:9px;font-family:'Alegreya',serif;font-weight:700;font-size:19px;color:#f1e6d2;white-space:nowrap;width:140px}
+.brand svg{width:24px;height:24px;fill:none;stroke:#d4a85a;stroke-width:1.6;stroke-linejoin:round}
+.grp{display:flex;align-items:center;gap:2px;padding:3px;background:rgba(241,230,210,.06);border-radius:12px}
+.ib{width:40px;height:40px;border:0;background:transparent;border-radius:9px;color:#e6d9bf;display:grid;place-items:center;padding:0;cursor:pointer}
+.ib:hover{background:rgba(241,230,210,.1)}
+.ib.on{background:#d4a85a;color:#1c1510}
+.ib svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sw{width:34px;height:40px;border:0;background:transparent;border-radius:9px;display:grid;place-items:center;padding:0;cursor:pointer}
+.sw span{display:block;width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.16)}
+.sw.on span{box-shadow:0 0 0 2px #1c1510,0 0 0 4px #d4a85a}
+.wd{width:36px;height:40px;border:0;background:transparent;border-radius:9px;display:grid;place-items:center;padding:0;cursor:pointer}
+.wd span{display:block;border-radius:50%;background:#e6d9bf}
+.wd.on{background:rgba(212,168,90,.22)}
+.toggle{display:flex;align-items:center;gap:8px;padding:0 6px;height:40px;color:#e6d9bf;white-space:nowrap;font-size:14px}
+.switch{width:34px;height:20px;border-radius:10px;background:#d4a85a;position:relative;flex:none}
+.switch::after{content:'';position:absolute;right:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#1c1510}
+.end{margin-left:auto;display:flex;gap:4px;align-items:center}
+.main{flex:1;display:flex;min-height:0}
+.shelf{width:104px;flex:none;padding:16px 0 16px 18px;display:flex;flex-direction:column;gap:12px;border-right:1px solid rgba(241,230,210,.06)}
+.shelf h2{margin:0;font:700 11px 'Alegreya Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#bfae90}
+.spine{width:60px;height:224px;border:0;border-radius:3px 7px 7px 3px;padding:14px 0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;color:#ecd398;cursor:pointer;box-shadow:inset -6px 0 10px rgba(0,0,0,.25),inset 2px 0 0 rgba(255,255,255,.08),2px 3px 8px rgba(0,0,0,.35)}
+.spine .nm{writing-mode:vertical-rl;transform:rotate(180deg);font:700 18px 'Alegreya',serif;letter-spacing:.05em}
+.spine .bd{width:100%;height:9px;border-top:2px solid rgba(236,211,152,.55);border-bottom:2px solid rgba(236,211,152,.55)}
+.spine.on{transform:translateX(16px)}
+.spine.new{background:transparent;border:1.5px dashed rgba(241,230,210,.28);box-shadow:none;height:132px;color:#bfae90;justify-content:center;gap:8px}
+.spine.new .nm{font:600 14px 'Alegreya Sans',sans-serif;letter-spacing:.04em}
+.desk{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-width:0;padding-right:40px}
+.book{position:relative;padding:10px;border-radius:14px;background:#46562f;background-image:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.08),transparent 60%),repeating-linear-gradient(35deg,rgba(0,0,0,.04) 0 2px,transparent 2px 5px);box-shadow:0 34px 70px rgba(0,0,0,.5),0 6px 16px rgba(0,0,0,.35)}
+.spread{display:flex;position:relative;z-index:1}
+.spread::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(90,60,30,.25)}
+.page{width:570px;height:720px;position:relative;overflow:hidden;background-color:#f3e8d0;background-image:linear-gradient(90deg,transparent 71px,rgba(201,74,62,.55) 71px,rgba(201,74,62,.55) 72.5px,transparent 72.5px,transparent 75px,rgba(201,74,62,.32) 75px,rgba(201,74,62,.32) 76px,transparent 76px),linear-gradient(#f3e8d0,#f3e8d0),repeating-linear-gradient(180deg,transparent 0,transparent 31px,rgba(201,96,84,.30) 31px,rgba(201,96,84,.30) 32px),radial-gradient(ellipse at 35% 25%,rgba(255,251,238,.7),rgba(236,220,186,.0) 70%);background-size:100% 100%,100% 88px,100% 32px,100% 100%;background-repeat:no-repeat,no-repeat,repeat,no-repeat}
+.page.l{border-radius:6px 2px 2px 6px;box-shadow:inset -46px 0 44px -34px rgba(110,70,25,.5),-1px 0 0 #e4d5b5,-2px 1px 0 #d6c4a0,-3px 2px 0 #e4d5b5,-4px 3px 0 #cbb892}
+.page.r{border-radius:2px 6px 6px 2px;box-shadow:inset 46px 0 44px -34px rgba(110,70,25,.5),1px 0 0 #e4d5b5,2px 1px 0 #d6c4a0,3px 2px 0 #e4d5b5,4px 3px 0 #cbb892}
+.phead{position:absolute;left:92px;right:36px;top:0;height:88px;display:flex;align-items:flex-end;justify-content:space-between;padding-bottom:12px;gap:12px}
+.ptitle{margin:0;font:700 30px/1 'Alegreya',serif;color:#3a2a1e}
+.pmeta{font:500 13px 'Alegreya Sans',sans-serif;color:#6f5a45;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;border:1.5px solid rgba(79,107,50,.5);color:#3f5627;font:600 12px 'Alegreya Sans',sans-serif;background:rgba(79,107,50,.07)}
+.pill svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.body{position:absolute;left:92px;right:36px;top:100px}
+.hw{font-family:'Caveat',cursive;font-size:26px;line-height:32px;color:#2b2622;margin:0}
+.hwh{font-family:'Caveat',cursive;font-weight:700;font-size:30px;line-height:32px;margin:0}
+.ox{color:#8e2a2a}.pr{color:#2a4e7f}.se{color:#6b4a2e}.mo{color:#4f6b32}.vi{color:#6d4a8a}
+.hl{background:linear-gradient(transparent 38%,rgba(160,200,120,.5) 38%,rgba(160,200,120,.5) 86%,transparent 86%);padding:0 4px;border-radius:3px}
+.tabs{position:absolute;left:calc(100% - 8px);top:26px;display:flex;flex-direction:column;gap:5px;z-index:0}
+.tab{width:48px;border:0;border-radius:0 9px 9px 0;padding:16px 0 16px 10px;writing-mode:vertical-rl;font:700 13px 'Alegreya Sans',sans-serif;letter-spacing:.04em;color:#3a2a1e;text-align:center;cursor:pointer;box-shadow:2px 2px 4px rgba(0,0,0,.28)}
+.tab.on{background:#f3e8d0;width:56px;color:#8e2a2a}
+.tab.add{background:transparent;border:1.5px dashed rgba(241,230,210,.35);color:#e6d9bf;padding:10px 0 10px 8px;box-shadow:none;writing-mode:horizontal-tb;font-size:20px;height:44px}
+.status{height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px 0 122px;background:#1c1510;border-top:1px solid rgba(241,230,210,.08);color:#cdbd9f;font-size:13px}
+.status .nav{display:flex;align-items:center;gap:10px}
+.sb{height:30px;border:0;border-radius:8px;background:rgba(241,230,210,.07);color:#e6d9bf;padding:0 10px;display:inline-flex;align-items:center;gap:6px;font:500 13px 'Alegreya Sans',sans-serif;cursor:pointer}
+.sb svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dot{width:7px;height:7px;border-radius:50%;background:#8fb36a;display:inline-block;margin-right:6px}
+.print{position:absolute;background:#f8f4ea;padding:10px 10px 30px;box-shadow:0 12px 20px rgba(50,30,10,.28),0 1px 2px rgba(0,0,0,.25);z-index:2}
+.ph{position:relative;overflow:hidden;display:block;line-height:0}
+.ph::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 48%,rgba(45,22,6,.5) 100%),linear-gradient(rgba(255,170,80,.14),rgba(120,160,150,.10));pointer-events:none}
+.stamp{position:absolute;right:9px;bottom:7px;font:15px/1 'Share Tech Mono',monospace;color:#ff9b4d;text-shadow:0 0 3px rgba(255,110,30,.95),0 0 8px rgba(255,90,20,.5);letter-spacing:1px;z-index:2}
+.cap{position:absolute;left:12px;right:12px;bottom:4px;font:600 19px/22px 'Caveat',cursive;color:#5a4636;text-align:center}
+.neg{position:absolute;background:#17120f;padding:24px 12px 26px;box-shadow:0 12px 20px rgba(30,18,6,.32);z-index:2}
+.neg::before,.neg::after{content:'';position:absolute;left:8px;right:8px;height:10px;background:repeating-linear-gradient(90deg,transparent 0 5px,#e8dbbd 5px 14px,transparent 14px 21px);border-radius:2px}
+.neg::before{top:7px}
+.neg::after{bottom:7px}
+.edge{position:absolute;left:14px;bottom:-1px;font:10px/1 'Share Tech Mono',monospace;color:#d98a3a;letter-spacing:2px;transform:translateY(-12px);z-index:3}
+.tape{position:absolute;width:80px;height:26px;background:rgba(238,226,192,.72);background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.12) 0 2px,transparent 2px 6px);clip-path:polygon(3% 0,12% 8%,22% 0,34% 6%,46% 0,58% 7%,70% 0,82% 6%,93% 0,100% 50%,96% 100%,85% 92%,74% 100%,62% 93%,50% 100%,38% 92%,26% 100%,14% 93%,4% 100%,0 50%);z-index:3}
+.t1{top:-8px;left:-30px;transform:rotate(-40deg)}
+.t2{top:-8px;right:-30px;transform:rotate(40deg)}
+.t3{bottom:-8px;left:-30px;transform:rotate(40deg)}
+.t4{bottom:-8px;right:-30px;transform:rotate(-40deg)}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
+.fact{display:flex;justify-content:space-between;gap:8px;font-family:'Caveat',cursive;font-size:24px;line-height:32px;color:#2b2622}
+.fact b{font:700 12px/32px 'Alegreya Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#7a6450}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="tb">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"></path><path d="M12 6l5 9H7z"></path><path d="M3 7l4 8M21 7l-4 8M7 15l5 7 5-7M12 2v4"></path></svg><span>Notebook</span></div>
+    <div class="grp" role="toolbar" aria-label="Drawing tools">
+      <button class="ib on" aria-label="Select (V)"><svg viewBox="0 0 24 24"><path d="M6 3l13 7-6 2-2.5 6z"></path></svg></button>
+      <button class="ib" aria-label="Pen (P)"><svg viewBox="0 0 24 24"><path d="M20 4c-7 1-12 6-14 13l-2 3 3-2c7-2 12-7 13-14z"></path><path d="M8.5 15.5l5-5"></path></svg></button>
+      <button class="ib" aria-label="Paint brush (B)"><svg viewBox="0 0 24 24"><path d="M19 3l2 2-9 9-2-2z"></path><path d="M9.5 13.5c-3 0-5 1.8-5 4.5 0 1-1 2.5-2 2.5 4 1 8 0 8.5-3.5"></path></svg></button>
+      <button class="ib" aria-label="Line (L)"><svg viewBox="0 0 24 24"><path d="M5 19L19 5"></path></svg></button>
+      <button class="ib" aria-label="Arrow (A)"><svg viewBox="0 0 24 24"><path d="M5 19L19 5M10 5h9v9"></path></svg></button>
+      <button class="ib" aria-label="Box (R)"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1.5"></rect></svg></button>
+      <button class="ib" aria-label="Circle (O)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle></svg></button>
+      <button class="ib" aria-label="Text (T)"><svg viewBox="0 0 24 24"><path d="M5 7V4h14v3M12 4v16M9 20h6"></path></svg></button>
+      <button class="ib" aria-label="Paste or insert image (I)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M21 16l-5-5-9 8"></path></svg></button>
+      <button class="ib" aria-label="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M9 20h11M4.5 15.5l9-10 6.5 6-8.5 8.5H8.5z"></path><path d="M9 11l6 5.5"></path></svg></button>
+    </div>
+    <div class="grp" role="group" aria-label="Ink colour">
+      <button class="sw" aria-label="Iron gall ink"><span style="background:#2b2622"></span></button>
+      <button class="sw" aria-label="Oxblood ink"><span style="background:#8e2a2a"></span></button>
+      <button class="sw" aria-label="Prussian blue ink"><span style="background:#2a4e7f"></span></button>
+      <button class="sw on" aria-label="Moss ink"><span style="background:#4f6b32"></span></button>
+      <button class="sw" aria-label="Sepia ink"><span style="background:#6b4a2e"></span></button>
+      <button class="sw" aria-label="Violet ink"><span style="background:#6d4a8a"></span></button>
+      <button class="ib" aria-label="All inks and highlighters"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-1.2-1-1.6-1-2.6 0-.9.8-1.4 1.8-1.4H17a4 4 0 004-4c0-4.4-4-8-9-8z"></path><circle cx="7.5" cy="11.5" r="1"></circle><circle cx="10" cy="7.5" r="1"></circle><circle cx="15" cy="7.5" r="1"></circle></svg></button>
+    </div>
+    <div class="grp" role="group" aria-label="Stroke width">
+      <button class="wd" aria-label="Fine nib"><span style="width:4px;height:4px"></span></button>
+      <button class="wd on" aria-label="Medium nib"><span style="width:8px;height:8px"></span></button>
+      <button class="wd" aria-label="Broad nib"><span style="width:13px;height:13px"></span></button>
+    </div>
+    <label class="toggle"><span class="switch" aria-hidden="true"></span><span>Lock to lines</span></label>
+    <div class="end">
+      <button class="ib" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg></button>
+      <button class="ib" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 000 12h3"></path></svg></button>
+      <button class="ib" aria-label="Import character sheet"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M4 16v4h16v-4"></path></svg></button>
+      <button class="ib" aria-label="Handwriting builder"><svg viewBox="0 0 24 24"><path d="M3 19l5-14 5 14M5 14h6"></path><path d="M14 17c2-1 2.5-4 4.5-4 1.5 0 1 3 2.5 3"></path></svg></button>
+      <button class="ib" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"></path></svg></button>
+    </div>
+  </header>
+
+  <div class="main">
+    <nav class="shelf" aria-label="Characters">
+      <h2>Party</h2>
+      <button class="spine on" style="background:#46562f" aria-current="true"><span class="bd"></span><span class="nm">Cosworth</span><span class="bd"></span></button>
+      <button class="spine new" aria-label="New character"><span style="font-size:22px;line-height:1">+</span><span class="nm">New</span></button>
+    </nav>
+
+    <section class="desk">
+      <div class="book">
+        <div class="spread">
+          <article class="page l">
+            <div class="phead">
+              <h1 class="ptitle">Backstory</h1>
+              <span class="pill"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M4 16v4h16v-4"></path></svg>From character sheet</span>
+            </div>
+            <div class="body">
+              <p class="hw">From the <span class="hl">Feywild</span>.</p>
+              <p class="hw">Family man, just a fun little acorn.</p>
+              <p class="hw">&#160;</p>
+              <p class="hw">Born alongside a small, magical heartseed,</p>
+              <p class="hw">which has bloomed into a delicate plant</p>
+              <p class="hw">under my care.</p>
+              <p class="hw">&#160;</p>
+              <p class="hwh mo">Friend</p>
+              <p class="hw">Benjamin — childhood best friend</p>
+              <p class="hwh ox">Foe</p>
+              <p class="hw">Jerimiah — used to be a little acorn friend,</p>
+              <p class="hw">but he saw my heartseed, got mad and</p>
+              <p class="hw">attacked us. Went into exile.</p>
+              <p class="hw">&#160;</p>
+              <p class="hw se">Starting out in Little Greywall.</p>
+            </div>
+          </article>
+
+          <article class="page r">
+            <div class="phead">
+              <div class="pmeta">Who he is</div>
+              <div class="pmeta">p. 2</div>
+            </div>
+
+            <div class="neg" style="left:96px;top:110px;transform:rotate(-3deg)">
+              <span class="tape t1"></span><span class="tape t2"></span><span class="tape t3"></span><span class="tape t4"></span>
+              <span class="ph">
+                <svg viewBox="0 0 170 200" width="170" height="200" role="img" aria-label="Pasted portrait of Cosworth">
+                  <rect width="170" height="200" fill="#8d9a6a"></rect>
+                  <rect y="130" width="170" height="70" fill="#5f6b3f"></rect>
+                  <circle cx="40" cy="40" r="30" fill="#b7c08a" opacity=".6"></circle>
+                  <ellipse cx="85" cy="124" rx="40" ry="48" fill="#9b6a3c"></ellipse>
+                  <path d="M42 98 Q85 60 128 98 Q120 84 85 80 Q50 84 42 98z" fill="#5c3c22"></path>
+                  <path d="M45 96 Q85 72 125 96 L125 104 Q85 88 45 104z" fill="#6e4a2a"></path>
+                  <path d="M85 74 q3 -14 12 -18" stroke="#4a3018" stroke-width="4" fill="none" stroke-linecap="round"></path>
+                  <circle cx="72" cy="122" r="5" fill="#f4efe0"></circle>
+                  <circle cx="98" cy="122" r="5" fill="#f4efe0"></circle>
+                  <path d="M74 142 q11 9 22 0" stroke="#4a3018" stroke-width="3" fill="none" stroke-linecap="round"></path>
+                  <path d="M118 150 q22 -10 26 -34 q-12 4 -20 16" fill="#6f9a4a"></path>
+                </svg>
+                <span class="stamp" style="font-size:13px">'26 10 31</span>
+              </span>
+              <span class="edge">▸ 14A&#160;&#160;400</span>
+            </div>
+
+            <div class="print" style="left:300px;top:150px;transform:rotate(4deg);width:220px">
+              <span class="tape t1"></span><span class="tape t2"></span><span class="tape t3"></span><span class="tape t4"></span>
+              <span class="ph">
+                <svg viewBox="0 0 200 150" width="200" height="150" role="img" aria-label="Pasted photo of a glowing forest">
+                  <rect width="200" height="150" fill="#5d6e4f"></rect>
+                  <rect width="200" height="70" fill="#a8b68a"></rect>
+                  <circle cx="120" cy="56" r="36" fill="#e6e0a8" opacity=".55"></circle>
+                  <path d="M10 150 V40 h12 V150z M52 150 V20 h16 V150z M150 150 V30 h14 V150z M182 150 V50 h10 V150z" fill="#2e3a24"></path>
+                  <path d="M0 120 Q50 104 100 116 T200 110 V150 H0z" fill="#3d4c2c"></path>
+                  <circle cx="92" cy="96" r="3" fill="#f7f0b0"></circle>
+                  <circle cx="132" cy="84" r="2.5" fill="#f7f0b0"></circle>
+                  <circle cx="110" cy="110" r="2" fill="#f7f0b0"></circle>
+                </svg>
+                <span class="stamp" style="font-size:13px">'26 10 31</span>
+              </span>
+              <span class="cap">home, the Feywild</span>
+            </div>
+
+            <div class="body" style="top:448px">
+              <p class="hwh se" style="margin-bottom:0">At a glance</p>
+              <div class="facts">
+                <div class="fact"><b>Species</b><span>Konomin</span></div>
+                <div class="fact"><b>Age</b><span>10</span></div>
+                <div class="fact"><b>Height</b><span>3 ft 2</span></div>
+                <div class="fact"><b>Eyes</b><span>white</span></div>
+                <div class="fact"><b>Skin, hair</b><span>acorn</span></div>
+                <div class="fact"><b>Gender</b><span>fluid</span></div>
+                <div class="fact"><b>Alignment</b><span>Chaotic Good</span></div>
+                <div class="fact"><b>Ally</b><span>Ash-Seven</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="Cosworth's sections">
+          <button class="tab" role="tab" style="background:#e3d6b6">Sessions</button>
+          <button class="tab on" role="tab" aria-selected="true">Backstory</button>
+          <button class="tab" role="tab" style="background:#d9b7a2">Likes</button>
+          <button class="tab" role="tab" style="background:#c9b6a8">Dislikes</button>
+          <button class="tab" role="tab" style="background:#c6c7a0">Wants</button>
+          <button class="tab" role="tab" style="background:#b9c3ae">Notes</button>
+          <button class="tab" role="tab" style="background:#e0cf9e">Character sheet</button>
+          <button class="tab add" aria-label="Add a section">+</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="status">
+    <div class="nav">
+      <button class="sb"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"></path></svg>Previous</button>
+      <span>Pages 1–2 of 4</span>
+      <button class="sb">Next<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div>
+    <div class="nav">
+      <span>Photo frame: Print · Negative</span>
+      <span>·</span>
+      <span><span class="dot"></span>Saved</span>
+      <span>·</span>
+      <span>100%</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

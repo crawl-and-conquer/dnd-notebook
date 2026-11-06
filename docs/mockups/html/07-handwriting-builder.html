@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Handwriting builder</title>
+<style>
+@font-face{font-family:'Caveat';src:url('fonts/Caveat-Variable.ttf') format('truetype');font-weight:400 700}
+@font-face{font-family:'Alegreya';src:url('fonts/Alegreya-Variable.ttf') format('truetype');font-weight:400 900}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Regular.ttf') format('truetype');font-weight:400}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Medium.ttf') format('truetype');font-weight:500 600}
+@font-face{font-family:'Alegreya Sans';src:url('fonts/AlegreyaSans-Bold.ttf') format('truetype');font-weight:700}
+@font-face{font-family:'Share Tech Mono';src:url('fonts/ShareTechMono-Regular.ttf') format('truetype')}
+
+body{margin:0}
+*{box-sizing:border-box}
+.app{width:1440px;height:900px;display:flex;flex-direction:column;background:#2b2019;background-image:radial-gradient(ellipse at 55% 45%,#3b2c22 0%,#2b2019 55%,#1d1611 100%);color:#f1e6d2;font-family:'Alegreya Sans',system-ui,sans-serif;font-size:14px;overflow:hidden}
+.tb{height:64px;flex:none;display:flex;align-items:center;gap:16px;padding:0 16px 0 16px;background:#1c1510;border-bottom:1px solid rgba(241,230,210,.08)}
+.brand{display:flex;align-items:center;gap:9px;font-family:'Alegreya',serif;font-weight:700;font-size:19px;color:#f1e6d2;white-space:nowrap}
+.brand svg{width:24px;height:24px;fill:none;stroke:#d4a85a;stroke-width:1.6;stroke-linejoin:round}
+.crumb{color:#bfae90;font-size:15px;display:flex;align-items:center;gap:10px}
+.crumb b{color:#f6ecd9;font-weight:700}
+.end{margin-left:auto;display:flex;gap:10px;align-items:center}
+.btn{height:44px;border-radius:11px;border:0;padding:0 18px;font:700 14.5px 'Alegreya Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn.ghost{background:rgba(241,230,210,.07);color:#e6d9bf}
+.btn.go{background:#d4a85a;color:#1c1510}
+.btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wrap{flex:1;display:grid;grid-template-columns:560px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 196px;gap:20px;padding:22px 24px 22px 24px;min-height:0}
+.panel{background:#241b15;border:1px solid rgba(241,230,210,.1);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.ph{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.ph h2{margin:0;font:700 20px 'Alegreya',serif;color:#f6ecd9}
+.ph span{color:#bfae90;font-size:13.5px}
+.prog{height:8px;border-radius:4px;background:rgba(241,230,210,.1);overflow:hidden}
+.prog i{display:block;height:100%;width:58.5%;background:#a9cf86;border-radius:4px}
+.glyphs{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+.g{height:50px;border-radius:10px;border:0;padding:0;cursor:pointer;display:grid;place-items:center;position:relative}
+.g.drawn{background:#f3e8d0;color:#2b2622;font:700 30px/1 'Caveat',cursive}
+.g.empty{background:transparent;border:1.5px dashed rgba(241,230,210,.22);color:rgba(241,230,210,.45);font:500 16px/1 'Alegreya Sans',sans-serif}
+.g.sel{box-shadow:0 0 0 2px #241b15,0 0 0 4px #d4a85a}
+.legend{display:flex;gap:18px;color:#bfae90;font-size:13px;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{display:inline-block;width:16px;height:16px;border-radius:4px}
+.padwrap{display:flex;gap:18px;flex:1;min-height:0}
+.pad{flex:1;border-radius:14px;background:#f3e8d0;position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.tools{width:200px;display:flex;flex-direction:column;gap:12px}
+.k{font:700 11px 'Alegreya Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#bfae90;margin:0}
+.var{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.var button{height:62px;border-radius:10px;border:0;background:#f3e8d0;color:#2b2622;font:700 34px/1 'Caveat',cursive;cursor:pointer}
+.var button.on{box-shadow:0 0 0 2px #241b15,0 0 0 4px #d4a85a}
+.var button.add{background:transparent;border:1.5px dashed rgba(241,230,210,.25);color:#bfae90;font:600 22px 'Alegreya Sans',sans-serif}
+.tool{height:44px;border-radius:10px;border:0;background:rgba(241,230,210,.07);color:#e6d9bf;font:600 14px 'Alegreya Sans',sans-serif;display:flex;align-items:center;gap:10px;padding:0 14px;cursor:pointer;width:100%}
+.tool svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.preview{grid-column:1 / span 2;flex-direction:row;gap:22px;align-items:stretch}
+.strip{flex:1;border-radius:14px;background:#f3e8d0;background-image:linear-gradient(90deg,transparent 46px,rgba(201,74,62,.5) 46px,rgba(201,74,62,.5) 47.5px,transparent 47.5px),repeating-linear-gradient(180deg,transparent 0,transparent 47px,rgba(201,96,84,.32) 47px,rgba(201,96,84,.32) 48px);padding:4px 24px 0 68px;color:#2b2622;font:400 38px/48px 'Caveat',cursive;transform-origin:left}
+.strip p{margin:0;white-space:nowrap}
+.miss{color:#8e2a2a;text-decoration:underline wavy rgba(142,42,42,.45);text-underline-offset:6px}
+.sliders{width:360px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+.sl{display:grid;grid-template-columns:92px minmax(0,1fr) 44px;align-items:center;gap:12px;color:#e6d9bf;font-size:14px}
+.sl input{width:100%;accent-color:#d4a85a}
+.sl output{color:#bfae90;font-size:13px;text-align:right}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="tb">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"></path><path d="M12 6l5 9H7z"></path><path d="M3 7l4 8M21 7l-4 8M7 15l5 7 5-7M12 2v4"></path></svg><span>Notebook</span></div>
+    <div class="crumb"><span>Cosworth</span><span>›</span><b>Handwriting</b></div>
+    <div class="end">
+      <button class="btn ghost"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M4 16v4h16v-4"></path></svg>Scan a page of my writing</button>
+      <button class="btn go">Use this hand</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="panel">
+      <div class="ph"><h2>Cosworth's hand</h2><span>41 of 70 drawn</span></div>
+      <div class="prog" aria-hidden="true"><i></i></div>
+      <div class="glyphs" role="listbox" aria-label="Letters">
+        <button class="g drawn" role="option" aria-label="Drawn: A">A</button>
+          <button class="g drawn" role="option" aria-label="Drawn: B">B</button>
+          <button class="g drawn" role="option" aria-label="Drawn: C">C</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: D">D</button>
+          <button class="g drawn" role="option" aria-label="Drawn: E">E</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: F">F</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: G">G</button>
+          <button class="g drawn" role="option" aria-label="Drawn: H">H</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: I">I</button>
+          <button class="g drawn" role="option" aria-label="Drawn: J">J</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: K">K</button>
+          <button class="g drawn" role="option" aria-label="Drawn: L">L</button>
+          <button class="g drawn" role="option" aria-label="Drawn: M">M</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: N">N</button>
+          <button class="g drawn" role="option" aria-label="Drawn: O">O</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: P">P</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: Q">Q</button>
+          <button class="g drawn" role="option" aria-label="Drawn: R">R</button>
+          <button class="g drawn" role="option" aria-label="Drawn: S">S</button>
+          <button class="g drawn" role="option" aria-label="Drawn: T">T</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: U">U</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: V">V</button>
+          <button class="g drawn" role="option" aria-label="Drawn: W">W</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: X">X</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: Y">Y</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: Z">Z</button>
+          <button class="g drawn" role="option" aria-label="Drawn: a">a</button>
+          <button class="g drawn" role="option" aria-label="Drawn: b">b</button>
+          <button class="g drawn" role="option" aria-label="Drawn: c">c</button>
+          <button class="g drawn" role="option" aria-label="Drawn: d">d</button>
+          <button class="g drawn" role="option" aria-label="Drawn: e">e</button>
+          <button class="g drawn" role="option" aria-label="Drawn: f">f</button>
+          <button class="g drawn sel" role="option" aria-label="Drawn: g">g</button>
+          <button class="g drawn" role="option" aria-label="Drawn: h">h</button>
+          <button class="g drawn" role="option" aria-label="Drawn: i">i</button>
+          <button class="g drawn" role="option" aria-label="Drawn: j">j</button>
+          <button class="g drawn" role="option" aria-label="Drawn: k">k</button>
+          <button class="g drawn" role="option" aria-label="Drawn: l">l</button>
+          <button class="g drawn" role="option" aria-label="Drawn: m">m</button>
+          <button class="g drawn" role="option" aria-label="Drawn: n">n</button>
+          <button class="g drawn" role="option" aria-label="Drawn: o">o</button>
+          <button class="g drawn" role="option" aria-label="Drawn: p">p</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: q">q</button>
+          <button class="g drawn" role="option" aria-label="Drawn: r">r</button>
+          <button class="g drawn" role="option" aria-label="Drawn: s">s</button>
+          <button class="g drawn" role="option" aria-label="Drawn: t">t</button>
+          <button class="g drawn" role="option" aria-label="Drawn: u">u</button>
+          <button class="g drawn" role="option" aria-label="Drawn: v">v</button>
+          <button class="g drawn" role="option" aria-label="Drawn: w">w</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: x">x</button>
+          <button class="g drawn" role="option" aria-label="Drawn: y">y</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: z">z</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: 0">0</button>
+          <button class="g drawn" role="option" aria-label="Drawn: 1">1</button>
+          <button class="g drawn" role="option" aria-label="Drawn: 2">2</button>
+          <button class="g drawn" role="option" aria-label="Drawn: 3">3</button>
+          <button class="g drawn" role="option" aria-label="Drawn: 4">4</button>
+          <button class="g drawn" role="option" aria-label="Drawn: 5">5</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: 6">6</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: 7">7</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: 8">8</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: 9">9</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: .">.</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: ,">,</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: !">!</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: ?">?</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: &#39;">&#39;</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: &quot;">&quot;</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: -">-</button>
+          <button class="g empty" role="option" aria-label="Not drawn yet: &amp;">&amp;</button>
+      </div>
+      <div class="legend">
+        <span><i style="background:#f3e8d0"></i>Drawn</span>
+        <span><i style="border:1.5px dashed rgba(241,230,210,.35)"></i>Falls back to the base hand</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><h2>Draw “g”</h2><span>Lower case · variant 2 of 3</span></div>
+      <div class="padwrap">
+        <div class="pad">
+          <svg width="100%" height="100%" viewBox="0 0 600 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Drawing pad with the letter g drawn between the guide lines">
+            <g font-family="Alegreya Sans" font-size="12" font-weight="700" letter-spacing="1.5" fill="#a0493e">
+              <text x="16" y="56">ASCENDER</text>
+              <text x="16" y="86">CAPITAL</text>
+              <text x="16" y="158">X-HEIGHT</text>
+              <text x="16" y="258">BASELINE</text>
+              <text x="16" y="338">DESCENDER</text>
+            </g>
+            <path d="M110 60 H584" stroke="rgba(201,96,84,.35)" stroke-width="1.5"></path>
+            <path d="M110 90 H584" stroke="rgba(201,96,84,.35)" stroke-width="1.5" stroke-dasharray="3 6"></path>
+            <path d="M110 162 H584" stroke="rgba(201,96,84,.55)" stroke-width="1.5" stroke-dasharray="8 6"></path>
+            <path d="M110 262 H584" stroke="rgba(201,74,62,.8)" stroke-width="2.2"></path>
+            <path d="M110 342 H584" stroke="rgba(201,96,84,.35)" stroke-width="1.5"></path>
+            <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M392 178 C364 150 302 156 296 206 C290 254 360 266 388 224 M394 170 C398 232 402 294 386 324 C370 356 314 356 296 328" stroke="#2b2622" stroke-width="6" opacity=".16"></path>
+              <path d="M360 182 C332 154 270 160 264 210 C258 258 328 270 356 228 M362 174 C366 236 370 298 354 328 C338 360 282 360 264 332" stroke="#2b2622" stroke-width="7"></path>
+            </g>
+            <text x="404" y="350" font-family="Caveat" font-size="20" fill="#6b4a2e">ghost of variant 1</text>
+          </svg>
+        </div>
+        <div class="tools">
+          <p class="k">Variants</p>
+          <div class="var">
+            <button aria-label="Variant 1">g</button>
+            <button class="on" aria-label="Variant 2" aria-pressed="true">g</button>
+            <button class="add" aria-label="Draw variant 3">+</button>
+          </div>
+          <p style="margin:0;color:#bfae90;font-size:13px;line-height:1.4">The notebook picks a variant at random so repeated letters don't look stamped.</p>
+          <button class="tool"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 010 12h-3"></path></svg>Undo stroke</button>
+          <button class="tool"><svg viewBox="0 0 24 24"><path d="M9 20h11M4.5 15.5l9-10 6.5 6-8.5 8.5H8.5z"></path></svg>Clear letter</button>
+          <div class="nav">
+            <button class="tool" style="justify-content:center">‹ f</button>
+            <button class="tool" style="justify-content:center">h ›</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel preview">
+      <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-width:0">
+        <div class="ph"><h2>Preview</h2><span>Underlined letters aren't drawn yet</span></div>
+        <div class="strip">
+          <p>Cosworth tends the heartseed at dawn.</p>
+          <p><span class="miss">Q</span>uick, find the <span class="miss">z</span>ither — <span class="miss">6</span> gp<span class="miss">!</span></p>
+        </div>
+      </div>
+      <div class="sliders">
+        <div class="sl"><label for="s1">Size</label><input id="s1" type="range" min="70" max="140" value="100"><output>100%</output></div>
+        <div class="sl"><label for="s2">Slant</label><input id="s2" type="range" min="-15" max="15" value="4"><output>4°</output></div>
+        <div class="sl"><label for="s3">Spacing</label><input id="s3" type="range" min="-20" max="40" value="6"><output>+6</output></div>
+        <div class="sl"><label for="s4">Wobble</label><input id="s4" type="range" min="0" max="100" value="35"><output>35%</output></div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>
