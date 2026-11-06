@@ -31,6 +31,7 @@ import { LINES_Y, boxFromCorners, lockAngle, snap, snapToLines, squareCorner, ty
 import { TextEditor } from "./TextEditor";
 import { PaperBackground, TITLE_X, TITLE_Y, drawOrder } from "./PageScene";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
+import { PhotoMenu } from "../components/PhotoMenu";
 import { useExportDialog } from "../components/ExportDialog";
 import { ToolOptions } from "./ToolOptions";
 
@@ -325,6 +326,10 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     itemId?: string;
   } | null>(null);
 
+  const [photoEdit, setPhotoEdit] = useState<{ x: number; y: number; elementId: string } | null>(
+    null,
+  );
+
   const onContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
     e.evt.preventDefault();
     if (readOnly) return;
@@ -349,6 +354,33 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     const el = page.elements.find((x) => x.id === menu.elementId);
     if (!el) return [];
     const items: MenuItem[] = [];
+
+    if (el.type === "image") {
+      items.push({
+        label: "Edit photo…",
+        onSelect: () => setPhotoEdit({ x: menu.x, y: menu.y, elementId: el.id }),
+      });
+      const patchImg = (fields: Partial<typeof el>) =>
+        editElements((els) =>
+          els.map((e) =>
+            e.id === el.id && e.type === "image"
+              ? { ...e, ...fields, updatedAt: new Date().toISOString() }
+              : e,
+          ),
+        );
+      const frameLabel = { print: "Print frame", negative: "Negative frame", none: "No frame" };
+      for (const f of ["print", "negative", "none"] as const) {
+        items.push({
+          label: (el.frame === f ? "✓ " : "  ") + frameLabel[f],
+          onSelect: () => patchImg({ frame: f }),
+        });
+      }
+      items.push({
+        label: (el.filmLook ? "✓ " : "  ") + "Film look",
+        onSelect: () => patchImg({ filmLook: !el.filmLook }),
+      });
+    }
+
     items.push({
       label: "Duplicate",
       onSelect: () => {
@@ -691,7 +723,16 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
         const { rel, width, height } = await importImage(notebookPath, blob);
         const { w, h } = placedSize(width, height);
         const p = snapToLines(at, live.current.lock);
-        const el = makeImage(rel, p.x, p.y, w, h);
+        const cfg = useNotebook.getState().config.general;
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(2);
+        const mm = String(now.getMonth() + 1).padStart(2, "0");
+        const dd = String(now.getDate()).padStart(2, "0");
+        const el = makeImage(rel, p.x, p.y, w, h, {
+          frame: cfg.defaultPhotoFrame,
+          filmLook: cfg.filmLook,
+          stamp: `'${yy} ${mm} ${dd}`,
+        });
         editElements((els) => [...els, el]);
         useTools.getState().setTool("select");
         setSelected([el.id]);
@@ -1028,6 +1069,17 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
         {menu && (
           <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />
         )}
+        {photoEdit && (() => {
+          const imgEl = page.elements.find((e) => e.id === photoEdit.elementId);
+          return imgEl?.type === "image" ? (
+            <PhotoMenu
+              el={imgEl}
+              x={photoEdit.x}
+              y={photoEdit.y}
+              onClose={() => setPhotoEdit(null)}
+            />
+          ) : null;
+        })()}
       </div>
 
       <input

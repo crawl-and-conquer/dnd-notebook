@@ -134,14 +134,41 @@ export function makeChecklist(
   };
 }
 
+export type ImageOptions = {
+  frame?: "print" | "negative" | "none";
+  filmLook?: boolean;
+  caption?: string;
+  stamp?: string;
+  tilt?: number;
+  tapeSeed?: number;
+};
+
 export function makeImage(
   asset: string,
   x: number,
   y: number,
   w: number,
   h: number,
+  opts: ImageOptions = {},
 ): ElementOf<"image"> {
-  return { id: newId(), type: "image", asset, x, y, rotation: 0, w, h, ...stamp() };
+  const tilt = opts.tilt ?? (Math.random() * 8 - 4);
+  return {
+    id: newId(),
+    type: "image",
+    asset,
+    x,
+    y,
+    rotation: tilt,
+    w,
+    h,
+    frame: opts.frame ?? "print",
+    filmLook: opts.filmLook ?? true,
+    caption: opts.caption ?? "",
+    stamp: opts.stamp ?? "",
+    tilt,
+    tapeSeed: opts.tapeSeed ?? Math.floor(Math.random() * 65536),
+    ...stamp(),
+  };
 }
 
 /** Rebuilds checklist items from edited lines, keeping ids, ticks and dates by position. */

@@ -1177,6 +1177,92 @@ button:disabled {
   color: var(--pink-soft);
 }
 
+/* ---------- Photo menu ---------- */
+
+.photo-menu {
+  position: fixed;
+  width: 256px;
+  padding: 12px;
+  border-radius: var(--radius-group);
+  background: var(--desk);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 60;
+  pointer-events: auto;
+}
+
+.photo-menu-heading {
+  margin: 4px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.photo-menu-row {
+  display: flex;
+  gap: 4px;
+}
+
+.photo-menu-row button {
+  flex: 1;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.photo-menu-row button:hover,
+.photo-menu-row button:focus-visible {
+  background: var(--chip-hover);
+}
+
+.photo-menu-row button.active {
+  background: var(--mint);
+  color: var(--desk);
+  border-color: var(--mint);
+}
+
+.photo-menu-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-button);
+  background: var(--paper);
+  color: var(--text);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.photo-menu-input::placeholder {
+  color: var(--text-muted);
+}
+
+.photo-menu-apply {
+  margin-top: 4px;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--mint);
+  color: var(--desk);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.photo-menu-apply:hover,
+.photo-menu-apply:focus-visible {
+  opacity: 0.88;
+}
+
 /* ---------- Tabs ---------- */
 
 .tabs {

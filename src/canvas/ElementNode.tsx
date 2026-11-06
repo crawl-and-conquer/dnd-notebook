@@ -1,6 +1,6 @@
 import Konva from "konva";
 import { memo } from "react";
-import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Text } from "react-konva";
+import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text } from "react-konva";
 import type { Element } from "../model/page";
 import { useAsset } from "./assets";
 import { TEXT_STYLE, strokePath } from "./elements";
@@ -275,6 +275,96 @@ function Checklist({
   );
 }
 
+// Seeded pseudo-random in [0, 1)
+function sr(seed: number, i: number): number {
+  const x = Math.sin(seed * 9301 + i * 49297 + 7919) * 100000;
+  return x - Math.floor(x);
+}
+
+type Pad = { l: number; t: number; r: number; b: number };
+function framePad(frame: "print" | "negative" | "none"): Pad {
+  if (frame === "print") return { l: 10, t: 10, r: 10, b: 30 };
+  if (frame === "negative") return { l: 16, t: 24, r: 16, b: 24 };
+  return { l: 0, t: 0, r: 0, b: 0 };
+}
+
+function TapeStrip({
+  cx,
+  cy,
+  baseAngle,
+  seed,
+  si,
+}: {
+  cx: number;
+  cy: number;
+  baseAngle: number;
+  seed: number;
+  si: number;
+}) {
+  const len = 76 + sr(seed, si) * 10;
+  const W = 26;
+  const angle = baseAngle + (sr(seed, si + 1) - 0.5) * 10;
+  return (
+    <Shape
+      x={cx}
+      y={cy}
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx) => {
+        const c = (ctx as unknown as { _context: CanvasRenderingContext2D })._context;
+        const L = len / 2;
+        const H = W / 2;
+        const j = W * 0.3;
+        const tl0 = (sr(seed, si + 2) - 0.5) * j;
+        const tl1 = (sr(seed, si + 3) - 0.5) * j;
+        const tr0 = (sr(seed, si + 4) - 0.5) * j;
+        const tr1 = (sr(seed, si + 5) - 0.5) * j;
+        c.save();
+        c.rotate((angle * Math.PI) / 180);
+        c.beginPath();
+        c.moveTo(-L + tl0, -H);
+        c.lineTo(-L + tl1, 0);
+        c.lineTo(-L + tl0, H);
+        c.lineTo(L + tr0, H);
+        c.lineTo(L + tr1, 0);
+        c.lineTo(L + tr0, -H);
+        c.closePath();
+        c.fillStyle = "rgba(238,226,192,.72)";
+        c.fill();
+        c.restore();
+      }}
+    />
+  );
+}
+
+function SprocketRow({
+  x0,
+  y,
+  frameWidth,
+}: {
+  x0: number;
+  y: number;
+  frameWidth: number;
+}) {
+  const holes: number[] = [];
+  for (let x = 8; x < frameWidth - 8; x += 20) holes.push(x);
+  return (
+    <>
+      {holes.map((hx, i) => (
+        <Ellipse
+          key={i}
+          x={x0 + hx}
+          y={y}
+          radiusX={4}
+          radiusY={4}
+          fill="#ede5d0"
+          listening={false}
+        />
+      ))}
+    </>
+  );
+}
+
 function ImageBody({
   el,
   notebookPath,
@@ -285,27 +375,126 @@ function ImageBody({
   const t = useCanvasTheme();
   const img = useAsset(notebookPath, el.asset);
   if (!t.images) return null;
+
+  const pad = framePad(el.frame);
+  const fw = el.w + pad.l + pad.r;
+  const ftlX = -pad.l;
+  const ftlY = -pad.t;
+  const ftrX = el.w + pad.r;
+  const ftrY = -pad.t;
+  const fblX = -pad.l;
+  const fblY = el.h + pad.b;
+  const fbrX = el.w + pad.r;
+  const fbrY = el.h + pad.b;
+
   if (!img) {
     return (
-      <Rect
-        width={el.w}
-        height={el.h}
-        stroke={t.token("--line-strong")}
-        dash={[6, 6]}
-        strokeWidth={2}
-      />
+      <>
+        {el.frame === "print" && (
+          <Rect
+            x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
+            fill="#f8f4ea"
+            shadowColor="rgba(50,30,10,0.28)" shadowBlur={20} shadowOffsetY={12}
+          />
+        )}
+        {el.frame === "negative" && (
+          <Rect x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b} fill="#17120f" />
+        )}
+        <Rect
+          width={el.w} height={el.h}
+          stroke={t.token("--line-strong")} dash={[6, 6]} strokeWidth={2}
+        />
+        <TapeStrip cx={ftlX} cy={ftlY} baseAngle={40} seed={el.tapeSeed} si={0} />
+        <TapeStrip cx={ftrX} cy={ftrY} baseAngle={-40} seed={el.tapeSeed} si={6} />
+        <TapeStrip cx={fblX} cy={fblY} baseAngle={-40} seed={el.tapeSeed} si={12} />
+        <TapeStrip cx={fbrX} cy={fbrY} baseAngle={40} seed={el.tapeSeed} si={18} />
+      </>
     );
   }
+
   return (
-    <KImage
-      image={img}
-      width={el.w}
-      height={el.h}
-      shadowColor="#040818"
-      shadowOpacity={0.45}
-      shadowBlur={18}
-      shadowOffsetY={6}
-      perfectDrawEnabled={false}
-    />
+    <>
+      {el.frame === "print" && (
+        <Rect
+          x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
+          fill="#f8f4ea"
+          shadowColor="rgba(50,30,10,0.28)" shadowBlur={20} shadowOffsetY={12}
+          perfectDrawEnabled={false}
+        />
+      )}
+      {el.frame === "negative" && (
+        <Rect
+          x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
+          fill="#17120f" perfectDrawEnabled={false}
+        />
+      )}
+
+      <KImage image={img} width={el.w} height={el.h} perfectDrawEnabled={false} />
+
+      {el.filmLook && (
+        <Rect
+          width={el.w} height={el.h}
+          fill="rgba(255,160,50,0.12)"
+          listening={false} perfectDrawEnabled={false}
+        />
+      )}
+      {el.filmLook && (
+        <Rect
+          width={el.w} height={el.h}
+          fillRadialGradientStartPoint={{ x: el.w / 2, y: el.h / 2 }}
+          fillRadialGradientEndPoint={{ x: el.w / 2, y: el.h / 2 }}
+          fillRadialGradientStartRadius={Math.min(el.w, el.h) * 0.25}
+          fillRadialGradientEndRadius={Math.max(el.w, el.h) * 0.78}
+          fillRadialGradientColorStops={[0, "rgba(0,0,0,0)", 1, "rgba(0,0,0,0.3)"]}
+          listening={false} perfectDrawEnabled={false}
+        />
+      )}
+
+      {el.stamp && (
+        <Text
+          x={4} y={el.h - 20}
+          width={el.w - 8}
+          text={el.stamp}
+          align="right"
+          fontFamily="'Share Tech Mono', monospace"
+          fontSize={11}
+          fill="#ff9b4d"
+          shadowColor="rgba(220,60,0,0.6)" shadowBlur={5}
+          listening={false}
+        />
+      )}
+
+      {el.frame === "print" && el.caption && (
+        <Text
+          x={2} y={el.h + 8}
+          width={el.w - 4}
+          text={el.caption}
+          fontFamily={FONT_BODY}
+          fontSize={12}
+          fill="#2b2622"
+          listening={false}
+        />
+      )}
+
+      {el.frame === "negative" && (
+        <>
+          <Text
+            x={ftlX + 4} y={ftlY + 4}
+            text="▸ 14A  400"
+            fontFamily="'Share Tech Mono', monospace"
+            fontSize={9}
+            fill="#ff7a00"
+            listening={false}
+          />
+          <SprocketRow x0={ftlX} y={ftlY + 11} frameWidth={fw} />
+          <SprocketRow x0={ftlX} y={el.h + pad.b - 13} frameWidth={fw} />
+        </>
+      )}
+
+      <TapeStrip cx={ftlX} cy={ftlY} baseAngle={40} seed={el.tapeSeed} si={0} />
+      <TapeStrip cx={ftrX} cy={ftrY} baseAngle={-40} seed={el.tapeSeed} si={6} />
+      <TapeStrip cx={fblX} cy={fblY} baseAngle={-40} seed={el.tapeSeed} si={12} />
+      <TapeStrip cx={fbrX} cy={fbrY} baseAngle={40} seed={el.tapeSeed} si={18} />
+    </>
   );
 }

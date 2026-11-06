@@ -85,6 +85,12 @@ const ImageSchema = z.object({
   asset: z.string().regex(/^assets\/[^/\\]+$/, "Expected assets/<file>"),
   w: z.number(),
   h: z.number(),
+  frame: z.enum(["print", "negative", "none"]).default("print"),
+  filmLook: z.boolean().default(true),
+  caption: z.string().default(""),
+  stamp: z.string().default(""),
+  tilt: z.number().default(0),
+  tapeSeed: z.number().default(0),
 });
 
 export const ElementSchema = z.discriminatedUnion("type", [
