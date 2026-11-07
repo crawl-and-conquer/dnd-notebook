@@ -12,6 +12,7 @@ import { TOOL_KEYS, useTools } from "../store/tools";
 import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
 import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
+import { ImportDialog, useImportDialog } from "../components/ImportDialog";
 import { HandBuilder } from "../handwriting/HandBuilder";
 import { SheetPage } from "../sheet/SheetPage";
 import { useUpdates } from "./updates";
@@ -123,6 +124,11 @@ export function App() {
         useExportDialog.getState().setOpen(true);
         return;
       }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        useImportDialog.getState().setOpen(true);
+        return;
+      }
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         if ("characterId" in s.view && !s.settingsOpen && !useExportDialog.getState().open) {
@@ -165,6 +171,7 @@ export function App() {
       <SettingsPanel />
       <ExportDialog />
       <NewCharacterDialog />
+      <ImportDialog />
       <UpdatePrompt />
       {notice && (
         <div className="notice" role="status">
