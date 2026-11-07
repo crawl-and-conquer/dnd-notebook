@@ -160,7 +160,7 @@ pub struct PrepareResult {
     /// "created" (new notes folder), "existing" (this app's notes folder, loaded as is),
     /// or "foreign" (an unrelated `notes` folder; nothing was written).
     pub status: String,
-    pub notes_path: String,
+    pub notebook_path: String,
 }
 
 pub fn is_our_notebook(notes: &Path) -> bool {
@@ -190,10 +190,10 @@ pub fn prepare_folder(
             // Make sure subfolders exist, but never touch existing files.
             fs::create_dir_all(notes.join("pages")).map_err(err)?;
             fs::create_dir_all(notes.join("assets")).map_err(err)?;
-            return Ok(PrepareResult { status: "existing".into(), notes_path });
+            return Ok(PrepareResult { status: "existing".into(), notebook_path: notes_path });
         }
         if !allow_foreign {
-            return Ok(PrepareResult { status: "foreign".into(), notes_path });
+            return Ok(PrepareResult { status: "foreign".into(), notebook_path: notes_path });
         }
         if notes.join("notebook.json").exists() {
             return Err("This notes folder already has a notebook.json from another app. Choose a different folder.".into());
@@ -211,7 +211,7 @@ pub fn prepare_folder(
     });
     let text = serde_json::to_string_pretty(&notebook).map_err(err)?;
     atomic_write(&notes.join("notebook.json"), text.as_bytes())?;
-    Ok(PrepareResult { status: "created".into(), notes_path })
+    Ok(PrepareResult { status: "created".into(), notebook_path: notes_path })
 }
 
 #[tauri::command]
