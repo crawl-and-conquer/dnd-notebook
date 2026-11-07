@@ -39,9 +39,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "shortcutName": "Adventurer's Notebook",
-        "createDesktopShortcut": false,
-        "createStartMenuShortcut": true
+        "startMenuFolder": "Adventurer's Notebook"
       }
     }
   },
