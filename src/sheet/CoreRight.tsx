@@ -13,7 +13,7 @@ type Props = {
   trackers: TrackerState;
 };
 
-export function CoreRight({ characterId: _characterId, sheet, trackers: _trackers }: Props) {
+export function CoreRight({ sheet }: Props) {
   const prof = sheet.proficiencyBonus;
 
   const passivePerception =

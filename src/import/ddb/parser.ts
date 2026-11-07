@@ -193,7 +193,8 @@ const SKILL_LABEL_Y: Record<SkillName, number> = {
 
 function parseSkillProficiencies(words: OcrWord[]): SkillName[] {
   const profs: SkillName[] = [];
-  for (const [skill, labelY] of Object.entries(SKILL_LABEL_Y) as [SkillName, number][]) {
+  for (const skill of SKILL_NAMES) {
+    const labelY = SKILL_LABEL_Y[skill];
     const marker = textIn(words, 108, labelY - 2, 131, labelY + 8);
     if (/[●•*+]/.test(marker) || (marker !== "" && marker !== "0" && !marker.startsWith("-"))) {
       profs.push(skill);
@@ -323,9 +324,7 @@ function parseSpellcasting(words: OcrWord[]): {
 // Spell list (spells page)
 // ---------------------------------------------------------------------------
 
-function parseSpells(
-  _words: OcrWord[],
-): Array<{ name: string; level: number; cantrip: boolean; always: boolean; concentration: boolean; ritual: boolean }> {
+function parseSpells(): Array<{ name: string; level: number; cantrip: boolean; always: boolean; concentration: boolean; ritual: boolean }> {
   // Spell parsing not yet implemented
   return [];
 }
@@ -511,7 +510,7 @@ export function parseDdbSheet(words: OcrWord[]): Partial<SheetData> {
       };
     }
     if (sc.spellSlots.length) sheet.spellSlots = sc.spellSlots;
-    sheet.spells = parseSpells(spellWords);
+    sheet.spells = parseSpells();
   }
 
   // Coins are on the features/equipment page (page 2 in DDB layout)
