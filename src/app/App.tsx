@@ -17,6 +17,7 @@ import { HandBuilder } from "../handwriting/HandBuilder";
 import { SheetPage } from "../sheet/SheetPage";
 import { useUpdates } from "./updates";
 import { useShallow } from "zustand/react/shallow";
+import { usePreviouslyOn } from "../ai/previouslyOn";
 
 /** "Version x is ready" with Install and restart, or Later. */
 function UpdatePrompt() {
@@ -296,8 +297,11 @@ function MainView() {
 
   const { left, right } = spread;
   const handCtx = ch.status === "ok" ? { glyphs: ch.glyphs, hand: ch.character.hand } : null;
-  const isSheetSection = ch.status === "ok" &&
-    ch.character.sections.find((s) => s.id === ("characterId" in view ? view.sectionId : ""))?.kind === "sheet";
+  const activeSection = ch.status === "ok"
+    ? ch.character.sections.find((s) => s.id === ("characterId" in view ? view.sectionId : ""))
+    : null;
+  const isSheetSection = activeSection?.kind === "sheet";
+  const isSessionsSection = activeSection?.kind === "sessions";
 
   return (
     <HandContext.Provider value={handCtx}>
@@ -366,6 +370,13 @@ function MainView() {
               </button>
             </div>
           )}
+          {isSessionsSection && left && (
+            <PreviouslyOnBar
+              characterId={characterId}
+              sectionId={"characterId" in view ? view.sectionId : "sessions"}
+              leftPageId={left.page.id}
+            />
+          )}
         </div>
         <SectionTabs characterId={characterId} />
         {handwritingOpen && ch.status === "ok" && (
@@ -378,5 +389,38 @@ function MainView() {
         )}
       </div>
     </HandContext.Provider>
+  );
+}
+
+function PreviouslyOnBar({
+  characterId,
+  sectionId,
+  leftPageId,
+}: {
+  characterId: string;
+  sectionId: string;
+  leftPageId: string;
+}) {
+  const { phase, error, run, reset } = usePreviouslyOn();
+
+  if (phase === "error") {
+    return (
+      <div className="previously-on-bar previously-on-error">
+        <span className="previously-on-msg">{error}</span>
+        <button className="small-button" onClick={reset}>Dismiss</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="previously-on-bar">
+      <button
+        className="small-button"
+        disabled={phase === "running"}
+        onClick={() => void run(characterId, sectionId, leftPageId)}
+      >
+        {phase === "running" ? "Writing recap…" : phase === "done" ? "Done!" : "Previously on…"}
+      </button>
+    </div>
   );
 }
