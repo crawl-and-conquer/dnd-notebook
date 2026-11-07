@@ -45,7 +45,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYxRUFDRUQwMkE3OEI3MjgKUldRb3QzZ3EwTTdxOFhoemV1ZjF2M3FZTzdxZDYvVUJXUXROQlAySDVpVXZ4d2hSU05xYlo0MEkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBERTdGNDg4OTE4MjQ3NDUKUldSRlI0S1JpUFRuRFcwV3RVOVcrUmorQ3NZdENXODZoVlBabWFvQWlmalhPcWRITDFhQnhQS3cK",
       "endpoints": [
         "https://github.com/crawl-and-conquer/dnd-notebook/releases/latest/download/latest.json"
       ],
