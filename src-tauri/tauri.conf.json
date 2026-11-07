@@ -35,7 +35,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "nsis": {
+      "displayLanguageSelector": false,
+      "installMode": "currentUser",
+      "shortcutName": "Adventurer's Notebook",
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true
+    }
   },
   "plugins": {
     "updater": {

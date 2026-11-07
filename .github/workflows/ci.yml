@@ -25,6 +25,7 @@ jobs:
 
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npx tsc --noEmit -p tsconfig.node.json
       - run: npm run lint
       - run: npm test
       - run: cargo test --manifest-path src-tauri/Cargo.toml
