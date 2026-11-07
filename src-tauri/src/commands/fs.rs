@@ -595,21 +595,22 @@ mod tests {
     #[test]
     fn only_page_files_in_notes_pages_can_be_binned() {
         let dir = tempfile::tempdir().unwrap();
-        let pages = dir.path().join("Client").join("notes").join("pages");
-        fs::create_dir_all(&pages).unwrap();
-        let page = pages.join("2026-11-06-plan.page.json");
+        let section = dir.path().join("Cosworth").join("notebook").join("pages").join("sessions");
+        fs::create_dir_all(&section).unwrap();
+        let pages = section.parent().unwrap();
+        let page = section.join("2026-11-06-plan.page.json");
         fs::write(&page, "{}").unwrap();
-        let other = pages.join("notes.txt");
+        let other = section.join("notes.txt");
         fs::write(&other, "x").unwrap();
-        let loose = dir.path().join("Client").join("a.page.json");
+        let loose = dir.path().join("Cosworth").join("a.page.json");
         fs::write(&loose, "{}").unwrap();
 
         assert!(check_page_file(&page).is_ok());
         assert!(check_page_file(&other).is_err());
         assert!(check_page_file(&loose).is_err());
-        assert!(check_page_file(&pages.join("missing.page.json")).is_err());
-        assert!(check_page_file(&pages.join("..").join("pages").join("2026-11-06-plan.page.json")).is_err());
-        assert!(check_page_file(&dir.path().join("notes").join("pages")).is_err());
+        assert!(check_page_file(&section.join("missing.page.json")).is_err());
+        assert!(check_page_file(&pages.join("..").join("pages").join("sessions").join("2026-11-06-plan.page.json")).is_err());
+        assert!(check_page_file(&dir.path().join("notebook").join("pages")).is_err());
     }
 
     #[test]

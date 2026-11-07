@@ -44,15 +44,13 @@ pub fn page_file_names(paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> 
     let set: BTreeSet<String> = paths
         .into_iter()
         .filter(|p| {
-            // Allow both old `<notes>/pages/<file>` and new `<notebook>/pages/<sectionId>/<file>`
-            p.parent()
-                .and_then(Path::file_name)
-                .map(|n| n != "pages")  // parent is a section dir, not "pages" itself
-                .unwrap_or(false)
-                || p.parent()
-                    .and_then(Path::file_name)
-                    .map(|n| n == "pages")
-                    .unwrap_or(false)
+            // Expected: <notebook>/pages/<sectionId>/<file>.page.json
+            // Parent is a section dir; grandparent must be named "pages".
+            let parent_name = p.parent().and_then(Path::file_name);
+            let grandparent_name =
+                p.parent().and_then(Path::parent).and_then(Path::file_name);
+            parent_name.map(|n| n != "pages").unwrap_or(false)
+                && grandparent_name.map(|n| n == "pages").unwrap_or(false)
         })
         .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_string))
         .filter(|n| n.ends_with(".page.json") && !n.starts_with('.'))
@@ -109,17 +107,18 @@ mod tests {
 
     #[test]
     fn keeps_only_page_files_in_pages() {
-        let base = PathBuf::from("C:/Clients/A/notes");
+        let base = PathBuf::from("C:/Characters/Cosworth/notebook");
         let names = page_file_names(vec![
-            base.join("pages").join("2026-11-06-b.page.json"),
-            base.join("pages").join("2026-11-06-a.page.json"),
-            base.join("pages").join("2026-11-06-a.page.json"),
-            base.join("pages").join("2026-11-06-a.page.json.bak"),
-            base.join("pages").join(".2026-11-06-a.page.json.tmp"),
-            base.join("pages").join("notes.txt"),
-            base.join("notebook.json"),
+            base.join("pages").join("sessions").join("2026-11-06-b.page.json"),
+            base.join("pages").join("sessions").join("2026-11-06-a.page.json"),
+            base.join("pages").join("sessions").join("2026-11-06-a.page.json"),
+            base.join("pages").join("sessions").join("2026-11-06-a.page.json.bak"),
+            base.join("pages").join("sessions").join(".2026-11-06-a.page.json.tmp"),
+            base.join("pages").join("sessions").join("notes.txt"),
+            base.join("character.json"),
             base.join("assets").join("x.page.json"),
-            base.join("pages"),
+            base.join("pages").join("sessions"),
+            base.join("pages").join("sessions").join("extra").join("deep.page.json"),
         ]);
         assert_eq!(names, vec!["2026-11-06-a.page.json", "2026-11-06-b.page.json"]);
     }
@@ -128,8 +127,9 @@ mod tests {
     fn reports_real_changes_in_a_folder() {
         use std::sync::mpsc;
         let dir = tempfile::tempdir().unwrap();
-        let pages = dir.path().join("notes").join("pages");
-        std::fs::create_dir_all(&pages).unwrap();
+        let section = dir.path().join("notebook").join("pages").join("sessions");
+        std::fs::create_dir_all(&section).unwrap();
+        let pages = section.parent().unwrap();
         let (tx, rx) = mpsc::channel();
         let mut d = new_debouncer(Duration::from_millis(100), move |res: DebounceEventResult| {
             if let Ok(events) = res {
@@ -137,8 +137,8 @@ mod tests {
             }
         })
         .unwrap();
-        d.watcher().watch(&pages, RecursiveMode::NonRecursive).unwrap();
-        std::fs::write(pages.join("2026-11-06-x.page.json"), "{}").unwrap();
+        d.watcher().watch(pages, RecursiveMode::Recursive).unwrap();
+        std::fs::write(section.join("2026-11-06-x.page.json"), "{}").unwrap();
         let got = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert_eq!(got, vec!["2026-11-06-x.page.json"]);
     }
