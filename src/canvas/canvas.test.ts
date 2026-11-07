@@ -176,6 +176,12 @@ describe("duplicate, restyle, checklist edits", () => {
       ...makeShape("rect", { x: 0, y: 0, w: 1, h: 1 }, "#fff", 2, false),
       type: "image" as const,
       asset: "assets/a.png",
+      frame: "print" as const,
+      filmLook: false,
+      caption: "",
+      stamp: "",
+      tilt: 0,
+      tapeSeed: 0,
     };
     const { colour: _c, width: _w, dashed: _d, ...rest } = img;
     void _c;

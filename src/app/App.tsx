@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { PaperStage } from "../canvas/PaperStage";
+import { HandContext } from "../canvas/HandContext";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StatusBar } from "../components/StatusBar";
 import { Shelf } from "../components/Shelf";
@@ -11,6 +12,7 @@ import { TOOL_KEYS, useTools } from "../store/tools";
 import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
 import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
+import { HandBuilder } from "../handwriting/HandBuilder";
 import { useUpdates } from "./updates";
 import { useShallow } from "zustand/react/shallow";
 
@@ -183,6 +185,8 @@ function MainView() {
   const setPageOffset = useNotebook((s) => s.setPageOffset);
   const openSettings = useNotebook((s) => s.setSettingsOpen);
   const openNewChar = useNewCharacterDialog((s) => s.setOpen);
+  const handwritingOpen = useNotebook((s) => s.handwritingOpen);
+  const setHandwritingOpen = useNotebook((s) => s.setHandwritingOpen);
 
   const hasCharacters = config.characters.some((c) => !c.archived);
   const characterId = "characterId" in view ? view.characterId : null;
@@ -283,39 +287,50 @@ function MainView() {
   }
 
   const { left, right } = spread;
+  const handCtx = ch.status === "ok" ? { glyphs: ch.glyphs, hand: ch.character.hand } : null;
 
   return (
-    <div className="layout">
-      <Shelf />
-      <div className="cover">
-        <div className="spread">
-          {left && (
-            <div className="spread-page spread-left">
-              <PaperStage
-                page={left.page}
-                readOnly={left.readOnly}
-                notebookPath={ch.notebookPath}
-                onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
-                onActivate={() => setPageOffset(0)}
-              />
-            </div>
-          )}
-          {right ? (
-            <div className="spread-page spread-right">
-              <PaperStage
-                page={right.page}
-                readOnly={right.readOnly}
-                notebookPath={ch.notebookPath}
-                onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
-                onActivate={() => setPageOffset(1)}
-              />
-            </div>
-          ) : (
-            <div className="spread-page spread-right spread-blank" aria-hidden="true" />
-          )}
+    <HandContext.Provider value={handCtx}>
+      <div className="layout">
+        <Shelf />
+        <div className="cover">
+          <div className="spread">
+            {left && (
+              <div className="spread-page spread-left">
+                <PaperStage
+                  page={left.page}
+                  readOnly={left.readOnly}
+                  notebookPath={ch.notebookPath}
+                  onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
+                  onActivate={() => setPageOffset(0)}
+                />
+              </div>
+            )}
+            {right ? (
+              <div className="spread-page spread-right">
+                <PaperStage
+                  page={right.page}
+                  readOnly={right.readOnly}
+                  notebookPath={ch.notebookPath}
+                  onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
+                  onActivate={() => setPageOffset(1)}
+                />
+              </div>
+            ) : (
+              <div className="spread-page spread-right spread-blank" aria-hidden="true" />
+            )}
+          </div>
         </div>
+        <SectionTabs characterId={characterId} />
+        {handwritingOpen && ch.status === "ok" && (
+          <HandBuilder
+            characterId={characterId}
+            glyphs={ch.glyphs}
+            hand={ch.character.hand}
+            onClose={() => setHandwritingOpen(false)}
+          />
+        )}
       </div>
-      <SectionTabs characterId={characterId} />
-    </div>
+    </HandContext.Provider>
   );
 }

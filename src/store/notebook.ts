@@ -20,6 +20,12 @@ import {
   type Character,
 } from "../model/character";
 import {
+  emptyGlyphs,
+  parseGlyphs,
+  serialiseGlyphs,
+  type GlyphsData,
+} from "../model/hand";
+import {
   emptyHistory,
   record,
   redo as redoStep,
@@ -27,7 +33,7 @@ import {
   type History,
 } from "../canvas/history";
 import { backend } from "../storage/backend";
-import { pagePath } from "../storage/paths";
+import { glyphsPath, pagePath } from "../storage/paths";
 import {
   forgetDiskText,
   knownDiskText,
@@ -50,6 +56,7 @@ export type CharacterState =
       /** Pages per section id, in file/created order. */
       sectionPages: Record<string, LoadedPage[]>;
       errors: string[];
+      glyphs: GlyphsData;
     };
 
 export type SpreadPos = { characterId: string; sectionId: string; spreadIndex: number };
@@ -70,6 +77,7 @@ type NotebookStore = {
   save: SaveState;
   settingsOpen: boolean;
   pageListOpen: boolean;
+  handwritingOpen: boolean;
   notice: string | null;
   flash: { elementId: string; nonce: number } | null;
   historyTick: number;
@@ -94,6 +102,9 @@ type NotebookStore = {
   openSection(characterId: string, sectionId: string): void;
   setSettingsOpen(open: boolean): void;
   setPageListOpen(open: boolean): void;
+  setHandwritingOpen(open: boolean): void;
+  saveGlyphs(characterId: string, glyphs: GlyphsData): Promise<void>;
+  updateHandSettings(characterId: string, hand: Character["hand"]): Promise<void>;
   dismissNotice(): void;
 
   /** Navigate to a spread by absolute index in the current section. */
@@ -316,6 +327,7 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     save: { kind: "saved" },
     settingsOpen: false,
     pageListOpen: false,
+    handwritingOpen: false,
     notice: null,
     flash: null,
     historyTick: 0,
@@ -448,12 +460,21 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         character = createCharacter(cfg.name, cfg.cover);
       }
 
+      let glyphs: GlyphsData = emptyGlyphs();
+      try {
+        const glyphText = await backend.readTextFile(glyphsPath(result.notebookPath));
+        glyphs = parseGlyphs(glyphText);
+      } catch {
+        // no glyphs yet — start empty
+      }
+
       setCharacter(characterId, {
         status: "ok",
         notebookPath: result.notebookPath,
         character,
         sectionPages: result.sectionPages,
         errors: result.errors,
+        glyphs,
       });
       watchFolder(characterId, result.notebookPath);
 
@@ -498,6 +519,34 @@ export const useNotebook = create<NotebookStore>((set, get) => {
 
     setPageListOpen(open) {
       set({ pageListOpen: open });
+    },
+
+    setHandwritingOpen(open) {
+      set({ handwritingOpen: open });
+    },
+
+    async saveGlyphs(characterId, glyphs) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      setCharacter(characterId, { ...ch, glyphs });
+      try {
+        await backend.writeTextAtomic(glyphsPath(ch.notebookPath), serialiseGlyphs(glyphs));
+      } catch (e) {
+        set({ notice: `Could not save glyphs: ${String(e)}` });
+      }
+    },
+
+    async updateHandSettings(characterId, hand) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const character = { ...ch.character, hand };
+      setCharacter(characterId, { ...ch, character });
+      try {
+        const text = JSON.stringify(character, null, 2) + "\n";
+        await backend.writeTextAtomic(`${ch.notebookPath}/character.json`, text);
+      } catch (e) {
+        set({ notice: `Could not save hand settings: ${String(e)}` });
+      }
     },
 
     dismissNotice() {

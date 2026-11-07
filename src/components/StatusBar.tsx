@@ -33,6 +33,8 @@ export function StatusBar() {
   const newPage = useNotebook((s) => s.newPage);
   const pageListOpen = useNotebook((s) => s.pageListOpen);
   const setPageListOpen = useNotebook((s) => s.setPageListOpen);
+  const handwritingOpen = useNotebook((s) => s.handwritingOpen);
+  const setHandwritingOpen = useNotebook((s) => s.setHandwritingOpen);
   const general = useNotebook((s) => s.config.general);
   const zoom = useTools((s) => s.zoom);
   const view = useNotebook((s) => s.view);
@@ -84,9 +86,18 @@ export function StatusBar() {
         </div>
       )}
       {"characterId" in view && (
-        <span>
-          {general.lockToLines ? "Snapping to lines" : "Line snapping off"}
-        </span>
+        <>
+          <span>
+            {general.lockToLines ? "Snapping to lines" : "Line snapping off"}
+          </span>
+          <button
+            className={`small-button${handwritingOpen ? " active" : ""}`}
+            title="Hand builder"
+            onClick={() => setHandwritingOpen(!handwritingOpen)}
+          >
+            ✍ Hand
+          </button>
+        </>
       )}
       <span
         className={`push ${save.kind === "error" ? "error" : ""}`}

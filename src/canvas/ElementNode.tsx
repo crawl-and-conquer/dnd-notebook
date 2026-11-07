@@ -4,6 +4,8 @@ import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text }
 import type { Element } from "../model/page";
 import { useAsset } from "./assets";
 import { TEXT_STYLE, strokePath } from "./elements";
+import { useHand } from "./HandContext";
+import { HandText } from "./HandText";
 import { cssVar, useCanvasTheme } from "./theme";
 
 /** Reads a design token (CSS variable) so canvas colours match the chrome. */
@@ -120,6 +122,7 @@ export const ElementNode = memo(ElementNodeImpl);
 
 function Body({ el, notebookPath, onToggleItem }: Props) {
   const t = useCanvasTheme();
+  const hand = useHand();
   switch (el.type) {
     case "stroke":
       return (
@@ -188,6 +191,19 @@ function Body({ el, notebookPath, onToggleItem }: Props) {
       );
     case "text": {
       const f = textFont(el);
+      // Use hand rendering when glyphs are available and it's a plain (non-heading) text element
+      if (hand && !el.heading) {
+        return (
+          <HandText
+            text={el.text}
+            width={el.w}
+            fontSize={f.fontSize}
+            colour={t.ink(el.colour)}
+            glyphs={hand.glyphs}
+            hand={hand.hand}
+          />
+        );
+      }
       return (
         <Text
           text={el.text}

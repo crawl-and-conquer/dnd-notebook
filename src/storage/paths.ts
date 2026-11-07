@@ -19,3 +19,8 @@ export function sectionPagesDir(notebookPath: string, sectionId: string): string
 export function pagePath(notebookPath: string, sectionId: string, fileName: string): string {
   return joinPath(notebookPath, "pages", sectionId, fileName);
 }
+
+/** `<notebookPath>/glyphs.json` — the character's hand glyph data. */
+export function glyphsPath(notebookPath: string): string {
+  return joinPath(notebookPath, "glyphs.json");
+}
