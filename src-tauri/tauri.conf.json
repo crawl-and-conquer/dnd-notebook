@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Adventurer's Notebook",
+  "productName": "Adventurers Notebook",
   "version": "0.1.0",
   "identifier": "uk.co.paramountdigital.dnd-notebook",
   "build": {
@@ -39,7 +39,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "startMenuFolder": "Adventurer's Notebook"
+        "startMenuFolder": "Adventurers Notebook"
       }
     }
   },
