@@ -975,7 +975,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
         {/* Two layers only: each layer is a full-size canvas the browser composites every frame. */}
         <Layer ref={layerRef} listening={interactive}>
           <Group ref={contentRef}>
-            <PaperBackground />
+            {!page.sheetPageType && <PaperBackground />}
             {elementNodes}
           </Group>
         </Layer>

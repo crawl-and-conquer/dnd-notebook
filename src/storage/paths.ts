@@ -24,3 +24,13 @@ export function pagePath(notebookPath: string, sectionId: string, fileName: stri
 export function glyphsPath(notebookPath: string): string {
   return joinPath(notebookPath, "glyphs.json");
 }
+
+/** `<notebookPath>/sheet.json` — imported character sheet data. */
+export function sheetPath(notebookPath: string): string {
+  return joinPath(notebookPath, "sheet.json");
+}
+
+/** `<notebookPath>/trackers.json` — mutable HP, slots, feature uses. */
+export function trackersPath(notebookPath: string): string {
+  return joinPath(notebookPath, "trackers.json");
+}

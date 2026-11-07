@@ -2384,3 +2384,233 @@ button:disabled {
   color: var(--desk);
   border-color: var(--gold);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Character sheet templates — HTML overlay on Konva canvas
+   ═══════════════════════════════════════════════════════════ */
+
+.sheet-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sheet-template {
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  background: var(--paper);
+  color: var(--paper-margin);
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+/* Typography helpers */
+.sheet-template .big  { font-size: 22px; font-weight: 700; line-height: 1; }
+.sheet-template .mid  { font-size: 15px; font-weight: 600; line-height: 1.1; }
+.sheet-template .lbl  { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(43,32,25,0.55); }
+
+/* Section heading */
+.sh-section-title { margin-top: 4px; margin-bottom: 2px; }
+
+/* Stat block used in multiple templates */
+.sh-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+/* ── Core Left ── */
+.core-left .sh-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 4px;
+}
+.sh-name { font-size: 16px; font-weight: 700; }
+.sh-class, .sh-race, .sh-bg { font-size: 11px; color: rgba(43,32,25,0.7); }
+
+.sh-abilities {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.ab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(43,32,25,0.06);
+  border-radius: 6px;
+  padding: 4px 2px;
+  gap: 2px;
+}
+.ab-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.ab-score { font-size: 11px; }
+.ab-mod { }
+.ab-save { display: flex; align-items: center; gap: 3px; margin-top: 2px; }
+
+.sh-combat-row {
+  display: flex;
+  gap: 8px;
+}
+
+.sh-hp-panel {
+  background: rgba(43,32,25,0.06);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sh-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hp-input {
+  width: 54px;
+  border: 1px solid rgba(43,32,25,0.3);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.4);
+  padding: 2px 4px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+.sh-hp-sep { font-size: 18px; opacity: 0.5; }
+.sh-hp-max { }
+.sh-temp-hp {
+  width: 42px;
+  border: 1px solid rgba(43,32,25,0.2);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.3);
+  padding: 2px 4px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.sh-hit-dice { display: flex; align-items: baseline; gap: 6px; }
+
+.sh-death-saves { display: flex; flex-direction: column; gap: 3px; }
+.sh-ds-row { display: flex; align-items: center; gap: 5px; }
+
+.sh-profs { }
+.sh-profs-label { margin-bottom: 3px; }
+.sh-prof-line { font-size: 10px; }
+.sh-prof-cat { font-weight: 600; }
+
+/* ── Core Right ── */
+.sh-skills {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.sk {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(43,32,25,0.08);
+}
+.sk-bonus { min-width: 28px; text-align: right; }
+.sk-label { flex: 1; }
+.sk-ability { }
+
+.sh-passive-senses { }
+.sh-passive-row { display: flex; align-items: baseline; gap: 6px; }
+
+.sh-attacks { }
+.sh-atk-header { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 4px; padding-bottom: 2px; }
+.atk { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 4px; padding: 2px 0; border-bottom: 1px solid rgba(43,32,25,0.08); }
+.atk-name { }
+.atk-bonus { text-align: center; }
+.atk-damage { }
+
+.sh-initiative-ref { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; }
+
+/* ── Features ── */
+.sh-feat-group { margin-bottom: 6px; }
+.sh-feat { margin-bottom: 4px; }
+.sh-feat-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sh-feat-name { }
+.sh-feat-uses { display: flex; align-items: center; gap: 4px; }
+.sh-feat-restore { margin-left: 2px; }
+.sh-feat-desc { font-size: 10px; color: rgba(43,32,25,0.65); margin-top: 1px; }
+
+/* ── Spells Kit ── */
+.sh-spell-header { display: flex; gap: 10px; }
+.sh-slots { }
+.sh-slot-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.sh-slot-bubbles { display: flex; gap: 4px; }
+.sh-spell-list { margin-bottom: 4px; }
+.sh-spell-row { display: flex; align-items: center; gap: 5px; padding: 2px 0; border-bottom: 1px solid rgba(43,32,25,0.07); }
+.sh-spell-tag { margin-right: 2px; color: var(--pink); }
+
+.sh-coins { }
+.sh-coin-row { display: flex; gap: 10px; }
+.coin { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+
+.sh-inventory { flex: 1; overflow-y: auto; min-height: 0; }
+.sh-item-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid rgba(43,32,25,0.07); }
+.sh-item-name { flex: 1; }
+.sh-item-weight { margin-left: auto; }
+
+/* ── Spell List ── */
+.sh-spell-level-group { margin-bottom: 5px; }
+.sh-spell-level-heading { margin-bottom: 2px; font-weight: 600; }
+.sh-spell-entry { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.sh-spell-entry-name { flex: 1; }
+.sh-spell-tags { display: flex; gap: 4px; }
+
+/* ── Bubbles and buttons ── */
+.bub {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  flex-shrink: 0;
+}
+.bub.filled { background: currentColor; }
+.bub.expert { background: var(--gold); border-color: var(--gold); }
+
+.bub-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(43,32,25,0.5);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+.bub-btn.filled { background: rgba(43,32,25,0.7); border-color: rgba(43,32,25,0.7); }
+.bub-btn.fail { border-color: var(--pink); }
+.bub-btn.fail.filled { background: var(--pink); }
+.bub-btn.spent { background: rgba(43,32,25,0.3); border-color: rgba(43,32,25,0.3); }
+.bub-btn:hover { border-color: var(--gold); }
+
+/* Rest buttons in status bar */
+.statusbar .sh-rest-btn {
+  margin-left: 4px;
+}
+
+/* Rest bar below the spread for sheet sections */
+.sheet-rest-bar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+}

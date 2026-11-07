@@ -26,6 +26,17 @@ import {
   type GlyphsData,
 } from "../model/hand";
 import {
+  emptySheetData,
+  emptyTrackers,
+  parseSheetData,
+  parseTrackers,
+  serialiseSheet,
+  serialiseTrackers,
+  SHEET_PAGE_TYPES,
+  type SheetData,
+  type TrackerState,
+} from "../model/sheet";
+import {
   emptyHistory,
   record,
   redo as redoStep,
@@ -33,7 +44,7 @@ import {
   type History,
 } from "../canvas/history";
 import { backend } from "../storage/backend";
-import { glyphsPath, pagePath } from "../storage/paths";
+import { glyphsPath, pagePath, sheetPath, trackersPath } from "../storage/paths";
 import {
   forgetDiskText,
   knownDiskText,
@@ -57,6 +68,8 @@ export type CharacterState =
       sectionPages: Record<string, LoadedPage[]>;
       errors: string[];
       glyphs: GlyphsData;
+      sheet: SheetData;
+      trackers: TrackerState;
     };
 
 export type SpreadPos = { characterId: string; sectionId: string; spreadIndex: number };
@@ -105,6 +118,10 @@ type NotebookStore = {
   setHandwritingOpen(open: boolean): void;
   saveGlyphs(characterId: string, glyphs: GlyphsData): Promise<void>;
   updateHandSettings(characterId: string, hand: Character["hand"]): Promise<void>;
+  setSheetData(characterId: string, sheet: SheetData): Promise<void>;
+  updateTrackers(characterId: string, mutate: (t: TrackerState) => TrackerState): Promise<void>;
+  longRest(characterId: string): Promise<void>;
+  shortRest(characterId: string): Promise<void>;
   dismissNotice(): void;
 
   /** Navigate to a spread by absolute index in the current section. */
@@ -468,13 +485,60 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         // no glyphs yet — start empty
       }
 
+      let sheet: SheetData = emptySheetData();
+      try {
+        const sheetText = await backend.readTextFile(sheetPath(result.notebookPath));
+        sheet = parseSheetData(sheetText);
+      } catch {
+        // no sheet yet
+      }
+
+      let trackers: TrackerState = emptyTrackers(sheet.hp.max);
+      try {
+        const trackersText = await backend.readTextFile(trackersPath(result.notebookPath));
+        trackers = parseTrackers(trackersText, sheet.hp.max);
+      } catch {
+        // no trackers yet
+      }
+
+      // Auto-create sheet pages when the sheet section has none yet.
+      const sectionPages = { ...result.sectionPages };
+      const sheetSection = character.sections.find((s) => s.kind === "sheet");
+      if (sheetSection && (sectionPages[sheetSection.id] ?? []).length === 0) {
+        const now = new Date().toISOString();
+        const created: LoadedPage[] = SHEET_PAGE_TYPES.map((type) => {
+          const page: Page = {
+            schemaVersion: 1,
+            id: type,
+            title: type,
+            section: sheetSection.id,
+            sheetPageType: type,
+            createdAt: now,
+            updatedAt: now,
+            elements: [],
+          };
+          return { fileName: `${type}.page.json`, page, readOnly: false };
+        });
+        sectionPages[sheetSection.id] = created;
+        // Write page files so they persist across reloads.
+        for (const lp of created) {
+          try {
+            await savePage(result.notebookPath, sheetSection.id, lp.fileName, lp.page);
+          } catch {
+            // ignore write errors in browser preview
+          }
+        }
+      }
+
       setCharacter(characterId, {
         status: "ok",
         notebookPath: result.notebookPath,
         character,
-        sectionPages: result.sectionPages,
+        sectionPages,
         errors: result.errors,
         glyphs,
+        sheet,
+        trackers,
       });
       watchFolder(characterId, result.notebookPath);
 
@@ -547,6 +611,79 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       } catch (e) {
         set({ notice: `Could not save hand settings: ${String(e)}` });
       }
+    },
+
+    async setSheetData(characterId, sheet) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      setCharacter(characterId, { ...ch, sheet });
+      try {
+        await backend.writeTextAtomic(sheetPath(ch.notebookPath), serialiseSheet(sheet));
+      } catch (e) {
+        set({ notice: `Could not save sheet data: ${String(e)}` });
+      }
+    },
+
+    async updateTrackers(characterId, mutate) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const trackers = mutate(ch.trackers);
+      if (trackers === ch.trackers) return;
+      setCharacter(characterId, { ...ch, trackers });
+      try {
+        await backend.writeTextAtomic(trackersPath(ch.notebookPath), serialiseTrackers(trackers));
+      } catch (e) {
+        set({ notice: `Could not save trackers: ${String(e)}` });
+      }
+    },
+
+    async longRest(characterId) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const { sheet } = ch;
+      await get().updateTrackers(characterId, (t) => ({
+        ...t,
+        currentHp: sheet.hp.max,
+        tempHp: 0,
+        usedSpellSlots: [],
+        usedHitDice: 0,
+        deathSavesSuccess: 0,
+        deathSavesFail: 0,
+        // Restore all features that restore on a long rest.
+        usedFeatures: Object.fromEntries(
+          Object.entries(t.usedFeatures).filter(([id]) => {
+            const feat = sheet.features.find((f) => f.id === id);
+            if (!feat?.uses) return false;
+            return feat.uses.restoreOn !== "long";
+          }),
+        ),
+      }));
+    },
+
+    async shortRest(characterId) {
+      const ch = get().characters[characterId];
+      if (!ch || ch.status !== "ok") return;
+      const { sheet } = ch;
+      await get().updateTrackers(characterId, (t) => ({
+        ...t,
+        usedFeatures: Object.fromEntries(
+          Object.entries(t.usedFeatures)
+            .map(([id, used]) => {
+              const feat = sheet.features.find((f) => f.id === id);
+              if (!feat?.uses) return [id, used];
+              if (feat.uses.restoreOn === "short") return [id, 0];
+              // Partial restore: e.g. Wild Shape gets 1 charge back on short rest.
+              if (
+                feat.uses.partialRestoreOn === "short" &&
+                feat.uses.partialAmount !== undefined
+              ) {
+                return [id, Math.max(0, used - feat.uses.partialAmount)];
+              }
+              return [id, used];
+            })
+            .filter(([, used]) => (used as number) > 0),
+        ),
+      }));
     },
 
     dismissNotice() {

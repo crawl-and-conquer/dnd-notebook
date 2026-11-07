@@ -13,6 +13,7 @@ import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
 import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
 import { HandBuilder } from "../handwriting/HandBuilder";
+import { SheetPage } from "../sheet/SheetPage";
 import { useUpdates } from "./updates";
 import { useShallow } from "zustand/react/shallow";
 
@@ -288,6 +289,8 @@ function MainView() {
 
   const { left, right } = spread;
   const handCtx = ch.status === "ok" ? { glyphs: ch.glyphs, hand: ch.character.hand } : null;
+  const isSheetSection = ch.status === "ok" &&
+    ch.character.sections.find((s) => s.id === ("characterId" in view ? view.sectionId : ""))?.kind === "sheet";
 
   return (
     <HandContext.Provider value={handCtx}>
@@ -304,6 +307,16 @@ function MainView() {
                   onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
                   onActivate={() => setPageOffset(0)}
                 />
+                {left.page.sheetPageType && ch.status === "ok" && (
+                  <div className="sheet-overlay">
+                    <SheetPage
+                      page={left.page}
+                      characterId={characterId}
+                      sheet={ch.sheet}
+                      trackers={ch.trackers}
+                    />
+                  </div>
+                )}
               </div>
             )}
             {right ? (
@@ -315,11 +328,37 @@ function MainView() {
                   onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
                   onActivate={() => setPageOffset(1)}
                 />
+                {right.page.sheetPageType && ch.status === "ok" && (
+                  <div className="sheet-overlay">
+                    <SheetPage
+                      page={right.page}
+                      characterId={characterId}
+                      sheet={ch.sheet}
+                      trackers={ch.trackers}
+                    />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="spread-page spread-right spread-blank" aria-hidden="true" />
             )}
           </div>
+          {isSheetSection && ch.status === "ok" && (
+            <div className="sheet-rest-bar">
+              <button
+                className="small-button sh-rest-btn"
+                onClick={() => void useNotebook.getState().shortRest(characterId)}
+              >
+                Short rest
+              </button>
+              <button
+                className="small-button sh-rest-btn"
+                onClick={() => void useNotebook.getState().longRest(characterId)}
+              >
+                Long rest
+              </button>
+            </div>
+          )}
         </div>
         <SectionTabs characterId={characterId} />
         {handwritingOpen && ch.status === "ok" && (

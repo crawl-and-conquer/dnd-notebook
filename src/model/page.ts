@@ -113,6 +113,10 @@ export const PageSchema = z.object({
   session: z
     .object({ number: z.number(), date: z.string(), place: z.string() })
     .optional(),
+  /** Set for Character sheet pages; determines which template to render. */
+  sheetPageType: z
+    .enum(["core-left", "core-right", "features", "spells-kit", "spell-list"])
+    .optional(),
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
   elements: z.array(ElementSchema),
