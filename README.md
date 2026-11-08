@@ -6,17 +6,19 @@ Built with Tauri 2, React 18, TypeScript and Konva. See [SPEC.md](SPEC.md) for t
 
 ## Status
 
-| Milestone | State |
-| --- | --- |
-| M0 Fork and rename | Done |
-| M1 Notebook shell | Done |
-| M2 Tools and inks | Done |
-| M3 Photos | Done |
-| M4 Handwriting builder | Done |
-| M5 Character sheet | Done |
-| M6 Import | Done |
-| M7 Export and release | Done |
-| M8 AI recap | Done |
+Rebuilt against [SPEC.md](SPEC.md) in November 2026. "Checked" means unit tests plus the end-to-end run or screenshots against the mockups.
+
+| Milestone | State | Not yet checked |
+| --- | --- | --- |
+| M0 Fork and rename | Done | |
+| M1 Notebook shell | Checked | |
+| M2 Tools, inks and lock to lines | Checked | Smoothness on your own screen (headless Edge at 2x: 500 strokes plus 40 lines of handwriting on a spread zoom and pan at a 6 ms median frame) |
+| M3 Photos | Checked | |
+| M4 Handwriting | Checked | |
+| M5 Character sheet | Checked | |
+| M6 Import | Checked | Only one D&D Beyond export (Cosworth) as a fixture |
+| M7 Export and release | Export checked | Installing and updating the next release |
+| M8 Previously on... | Built | A run against a real AI provider |
 
 ## Prerequisites
 
