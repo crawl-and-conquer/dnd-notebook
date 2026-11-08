@@ -23,6 +23,14 @@ Rules:
 - Write dates like "Mon 9 Nov". At most 6 items in a section. Do not repeat an item in two sections.
 - Use only what is in the notes.`;
 
+export const PREVIOUSLY_ON_SYSTEM = `You write the "Previously on..." recap for a D&D adventure journal.
+You will be given notes from recent sessions: page titles and the text written on each page.
+
+Write 3–5 bullet points (each starting with •) summarising what happened, in past tense, UK English.
+Be specific about events, names, and places from the notes.
+No headings, no introductory line, no extra prose — just the bullets.
+If the notes are sparse or empty, write a single bullet that says "No notes recorded for recent sessions."`;
+
 export function chatSystem(notes: string): string {
   return `You answer questions about the user's notes in Adventurer's Notebook. Be brief and use UK English and plain sentences, without markdown headings.
 When you mention something from the notes, put its reference in square brackets straight after it, like [r12]. If the notes do not say, say so plainly.
