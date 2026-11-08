@@ -39,6 +39,8 @@ export const usePreviouslyOn = create<PreviouslyOnStore>((set, get) => ({
       const s = useNotebook.getState();
       const ch = s.characters[characterId];
       if (ch?.status !== "ok") throw new Error("This character's notebook is not loaded.");
+      if (s.config.characters.find((c) => c.id === characterId)?.excludeFromAi)
+        throw new Error("This character is set to never send notes to the AI. Change it in Settings, Characters and folders.");
       const loaded = ch.sectionPages[sectionId] ?? [];
       const pages = loaded.map((p) => p.page);
       const index = pages.findIndex((p) => p.id === pageId);

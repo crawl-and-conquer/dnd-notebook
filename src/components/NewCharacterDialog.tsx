@@ -6,11 +6,14 @@ import { notebookPathFor } from "../storage/paths";
 import { useNotebook } from "../store/notebook";
 import { CoverPicker } from "./CoverPicker";
 import { CloseIcon } from "./Icons";
+import { useImportDialog } from "./ImportDialog";
 
-export const useNewCharacterDialog = create<{ open: boolean; setOpen(o: boolean): void }>((set) => ({
-  open: false,
-  setOpen: (open) => set({ open }),
-}));
+export const useNewCharacterDialog = create<{ open: boolean; setOpen(o: boolean): void }>(
+  (set) => ({
+    open: false,
+    setOpen: (open) => set({ open }),
+  }),
+);
 
 export function NewCharacterDialog() {
   const open = useNewCharacterDialog((s) => s.open);
@@ -37,6 +40,7 @@ function Dialog({ onClose }: { onClose(): void }) {
   const [foreignPath, setForeignPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
 
   async function choose() {
     setError(null);
@@ -56,7 +60,7 @@ function Dialog({ onClose }: { onClose(): void }) {
         return;
       }
       await addCharacter({ name: name.trim(), cover, folder, notebookPath: r.notebookPath });
-      onClose();
+      setCreated(true);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -67,7 +71,12 @@ function Dialog({ onClose }: { onClose(): void }) {
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="new-character-dialog" role="dialog" aria-modal="true" aria-labelledby="new-char-title">
+      <div
+        className="new-character-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-char-title"
+      >
         <header>
           <h2 id="new-char-title">New character</h2>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
@@ -75,76 +84,104 @@ function Dialog({ onClose }: { onClose(): void }) {
           </button>
         </header>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void confirm(false);
-          }}
-        >
-          <label className="field">
-            Name
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Thorin Oakenshield"
-              autoFocus
-            />
-          </label>
-
-          <div className="field">
-            <span id="new-char-cover-label">Cover colour</span>
-            <CoverPicker value={cover} onChange={setCover} labelledBy="new-char-cover-label" />
-          </div>
-
-          <div className="field">
-            Folder
-            <div className="inline-row">
-              <button type="button" className="small-button" onClick={() => void choose()}>
-                Choose folder
+        {created ? (
+          <div className="new-character-next">
+            <p className="lead">
+              {name.trim()}’s notebook is ready. Fill it from a D&amp;D Beyond character sheet, or
+              start with blank pages.
+            </p>
+            <div className="form-actions">
+              <button type="button" className="pill ghost" onClick={onClose} autoFocus>
+                Start blank
               </button>
-              {folder && (
-                <span className="path-preview" title={notebookPathFor(folder)}>
-                  {notebookPathFor(folder)}
-                </span>
-              )}
+              <button
+                type="button"
+                className="pill primary"
+                onClick={() => {
+                  onClose();
+                  useImportDialog.getState().setOpen(true);
+                }}
+              >
+                Import a character sheet
+              </button>
             </div>
-            <span className="hint">
-              A <code>notebook</code> folder will be created inside the folder you choose.
-            </span>
           </div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirm(false);
+            }}
+          >
+            <label className="field">
+              Name
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Thorin Oakenshield"
+                autoFocus
+              />
+            </label>
 
-          {foreignPath && (
-            <div className="form-warning" role="alert">
-              {foreignPath} already exists and was not made by this app. The app will add{" "}
-              <code>character.json</code> and section folders to it, leaving your existing files
-              alone.
-              <div className="form-actions" style={{ marginTop: 10 }}>
-                <button type="button" className="small-button" onClick={() => setForeignPath(null)}>
-                  Choose another folder
+            <div className="field">
+              <span id="new-char-cover-label">Cover colour</span>
+              <CoverPicker value={cover} onChange={setCover} labelledBy="new-char-cover-label" />
+            </div>
+
+            <div className="field">
+              Folder
+              <div className="inline-row">
+                <button type="button" className="small-button" onClick={() => void choose()}>
+                  Choose folder
                 </button>
-                <button type="button" className="small-button" onClick={() => void confirm(true)}>
-                  Use this folder
-                </button>
+                {folder && (
+                  <span className="path-preview" title={notebookPathFor(folder)}>
+                    {notebookPathFor(folder)}
+                  </span>
+                )}
               </div>
+              <span className="hint">
+                A <code>notebook</code> folder will be created inside the folder you choose.
+              </span>
             </div>
-          )}
 
-          {error && <p className="form-error">{error}</p>}
+            {foreignPath && (
+              <div className="form-warning" role="alert">
+                {foreignPath} already exists and was not made by this app. The app will add{" "}
+                <code>character.json</code> and section folders to it, leaving your existing files
+                alone.
+                <div className="form-actions" style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="small-button"
+                    onClick={() => setForeignPath(null)}
+                  >
+                    Choose another folder
+                  </button>
+                  <button type="button" className="small-button" onClick={() => void confirm(true)}>
+                    Use this folder
+                  </button>
+                </div>
+              </div>
+            )}
 
-          <div className="form-actions">
-            <button type="button" className="pill ghost" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="pill primary"
-              disabled={busy || !folder || !name.trim()}
-            >
-              Create character
-            </button>
-          </div>
-        </form>
+            {error && <p className="form-error">{error}</p>}
+
+            <div className="form-actions">
+              <button type="button" className="pill ghost" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="pill primary"
+                disabled={busy || !folder || !name.trim()}
+              >
+                Create character
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </>
   );

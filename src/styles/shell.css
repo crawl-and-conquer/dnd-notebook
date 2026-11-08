@@ -631,12 +631,6 @@
   z-index: 3;
 }
 
-.sheet-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-}
-
 /* ---------- Section tabs ---------- */
 
 .tabs {
@@ -949,6 +943,50 @@
   box-shadow:
     0 0 0 2px var(--panel),
     0 0 0 4px var(--gilt);
+}
+/* Settings: a row of choices where one is on (photo frame, nib). */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+.segmented button {
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font: 500 13px var(--font-body);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.segmented button + button {
+  border-left: 1px solid var(--line-strong);
+}
+.segmented button:hover {
+  background: var(--chip-hover);
+}
+.segmented button[aria-checked="true"] {
+  background: var(--gilt-wash);
+  color: var(--text);
+}
+.segmented button:focus-visible {
+  outline: 2px solid var(--gilt);
+  outline-offset: -2px;
+}
+.mix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mix-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mix-row code {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .colour-picker input[type="color"] {
   width: 32px;
