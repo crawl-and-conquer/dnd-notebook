@@ -56,6 +56,9 @@ const RectSchema = z.object({
 });
 const EllipseSchema = RectSchema.extend({ type: z.literal("ellipse") });
 
+/** "hand": the character's handwriting; "print": Alegreya Sans, for labels. */
+const FontSchema = z.enum(["hand", "print"]).default("hand");
+
 const TextSchema = z.object({
   ...base,
   type: z.literal("text"),
@@ -64,6 +67,9 @@ const TextSchema = z.object({
   fontSize: z.number(),
   colour: z.string(),
   heading: z.boolean(),
+  font: FontSchema,
+  /** Drawn on a taped sticky note (the "Previously on..." recap). */
+  sticky: z.boolean().default(false),
 });
 
 const ChecklistItemSchema = z.object({
@@ -77,6 +83,8 @@ const ChecklistSchema = z.object({
   type: z.literal("checklist"),
   w: z.number(),
   items: z.array(ChecklistItemSchema),
+  colour: z.string().default("#2b2622"),
+  font: FontSchema,
 });
 
 const ImageSchema = z.object({
@@ -117,6 +125,8 @@ export const PageSchema = z.object({
   sheetPageType: z
     .enum(["core-left", "core-right", "features", "spells-kit", "spell-list"])
     .optional(),
+  /** Which spell-list page this is (0 for the first), when the list runs over several pages. */
+  sheetIndex: z.number().int().min(0).optional(),
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
   elements: z.array(ElementSchema),
@@ -231,22 +241,55 @@ export function slugify(title: string): string {
   return slug || "untitled";
 }
 
-/** `<created YYYY-MM-DD>-<slug>.page.json`, using the local date the page was created. */
-export function pageFileName(page: Pick<Page, "createdAt" | "title">, suffix = ""): string {
-  const d = new Date(page.createdAt);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const day = Number.isNaN(d.getTime())
-    ? page.createdAt.slice(0, 10)
-    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return `${day}-${slugify(page.title)}${suffix}.page.json`;
+/**
+ * Page files are numbered within their section so reading order survives renames:
+ * `0001-<slug>.page.json`. The number never changes; the slug follows the title.
+ */
+export function pageFileName(number: number, title: string, suffix = ""): string {
+  return `${String(number).padStart(4, "0")}-${slugify(title)}${suffix}.page.json`;
 }
 
-/** Picks a file name that does not clash with `taken` (adds -2, -3, ...). */
+/** The reading-order number at the start of a page file name, or null for an unnumbered file. */
+export function fileNumber(fileName: string): number | null {
+  const m = /^(\d{4,})-/.exec(fileName);
+  return m ? Number(m[1]) : null;
+}
+
+/** One more than the highest number already used in a section. */
+export function nextFileNumber(fileNames: Iterable<string>): number {
+  let max = 0;
+  for (const n of fileNames) max = Math.max(max, fileNumber(n) ?? 0);
+  return max + 1;
+}
+
+/** Picks a numbered file name that does not clash with `taken` (adds -2, -3, ...). */
 export function uniquePageFileName(
-  page: Pick<Page, "createdAt" | "title">,
+  number: number,
+  title: string,
   taken: ReadonlySet<string>,
 ): string {
-  let name = pageFileName(page);
-  for (let n = 2; taken.has(name); n++) name = pageFileName(page, `-${n}`);
+  let name = pageFileName(number, title);
+  for (let n = 2; taken.has(name); n++) name = pageFileName(number, title, `-${n}`);
   return name;
+}
+
+const SHEET_ORDER = ["core-left", "core-right", "features", "spells-kit", "spell-list"];
+
+/**
+ * Reading order within a section: numbered files by number, then unnumbered ones (older
+ * builds) with sheet templates in template order, then by creation time and name.
+ */
+export function comparePageFiles(
+  a: { fileName: string; page: Pick<Page, "createdAt" | "sheetPageType"> },
+  b: { fileName: string; page: Pick<Page, "createdAt" | "sheetPageType"> },
+): number {
+  const na = fileNumber(a.fileName);
+  const nb = fileNumber(b.fileName);
+  if (na !== null && nb !== null && na !== nb) return na - nb;
+  if (na !== null && nb === null) return -1;
+  if (na === null && nb !== null) return 1;
+  const sa = a.page.sheetPageType ? SHEET_ORDER.indexOf(a.page.sheetPageType) : 99;
+  const sb = b.page.sheetPageType ? SHEET_ORDER.indexOf(b.page.sheetPageType) : 99;
+  if (sa !== sb) return sa - sb;
+  return a.page.createdAt.localeCompare(b.page.createdAt) || a.fileName.localeCompare(b.fileName);
 }

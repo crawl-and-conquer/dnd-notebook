@@ -1,23 +1,23 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { STROKE_WIDTHS } from "../model/config";
+import { INK_COLOURS, HIGHLIGHTER_COLOURS, STROKE_WIDTHS } from "../model/config";
 import { restyle } from "../canvas/elements";
-import { useCatchUp } from "../ai/catchUp";
 import { useExportDialog } from "./ExportDialog";
+import { useImportDialog } from "./ImportDialog";
 import { currentPageOf, historyFor, useNotebook } from "../store/notebook";
 import { useTools, type ToolId } from "../store/tools";
 import {
   ArrowIcon,
   BoxIcon,
   BrushIcon,
-  CatchUpIcon,
   CircleIcon,
   EraserIcon,
   ExportIcon,
   GearIcon,
+  HandIcon,
   ImageIcon,
+  ImportIcon,
   LineIcon,
-  LinesIcon,
   NotebookMark,
   PaletteIcon,
   PenIcon,
@@ -27,6 +27,7 @@ import {
   UndoIcon,
 } from "./Icons";
 import { InkPalette } from "./InkPalette";
+import { ToolOptions } from "../canvas/ToolOptions";
 
 const TOOLS: { id: ToolId; label: string; key: string; icon: ReactNode }[] = [
   { id: "select", label: "Select", key: "V", icon: <SelectIcon /> },
@@ -41,12 +42,19 @@ const TOOLS: { id: ToolId; label: string; key: string; icon: ReactNode }[] = [
   { id: "eraser", label: "Eraser", key: "E", icon: <EraserIcon /> },
 ];
 
-const WIDTH_DOT: Record<number, number> = { 2: 4, 4: 8, 8: 13 };
-const WIDTH_LABEL: Record<number, string> = {
-  2: "Fine stroke",
-  4: "Medium stroke",
-  8: "Thick stroke",
-};
+const NIB_DOT: Record<number, number> = { 2: 4, 4: 8, 8: 13 };
+const NIB_LABEL: Record<number, string> = { 2: "Fine nib", 4: "Medium nib", 8: "Broad nib" };
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** The ink's name, for labels and tooltips; a mix or custom colour shows its hex value. */
+export function inkName(value: string): string {
+  return (
+    INK_COLOURS.find((i) => same(i.value, value))?.label ??
+    HIGHLIGHTER_COLOURS.find((i) => same(i.value, value))?.label ??
+    value
+  );
+}
 
 export function Toolbar() {
   const tool = useTools((s) => s.tool);
@@ -54,9 +62,11 @@ export function Toolbar() {
   const general = useNotebook((s) => s.config.general);
   const updateConfig = useNotebook((s) => s.updateConfig);
   const openSettings = useNotebook((s) => s.setSettingsOpen);
+  const handwritingOpen = useNotebook((s) => s.handwritingOpen);
+  const setHandwritingOpen = useNotebook((s) => s.setHandwritingOpen);
+  const hasCharacter = useNotebook((s) => "characterId" in s.view);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  const catchUpOpen = useCatchUp((s) => s.open);
   const undo = useNotebook((s) => s.undo);
   const redo = useNotebook((s) => s.redo);
   const editElements = useNotebook((s) => s.editElements);
@@ -81,12 +91,12 @@ export function Toolbar() {
         <span>Notebook</span>
       </div>
 
-      <div role="toolbar" aria-label="Drawing tools" className="tool-group">
+      <div role="toolbar" aria-label="Drawing tools" className="tb-group tool-anchor">
         {TOOLS.map((t) => (
           <button
             key={t.id}
-            className="icon-button"
-            aria-label={t.label}
+            className={`tb-icon${tool === t.id ? " on" : ""}`}
+            aria-label={`${t.label} (${t.key})`}
             title={`${t.label} (${t.key})`}
             aria-pressed={tool === t.id}
             onClick={() => setTool(t.id)}
@@ -94,63 +104,70 @@ export function Toolbar() {
             {t.icon}
           </button>
         ))}
+        <ToolOptions />
       </div>
 
-      <div role="group" aria-label="Ink colour" className="swatches">
+      <div role="group" aria-label="Ink colour" className="tb-group palette-anchor">
         {general.inkFavourites.map((v) => (
           <button
             key={v}
-            className="swatch"
-            aria-label={`Ink colour ${v}`}
-            title={v}
-            aria-pressed={general.inkColour.toLowerCase() === v.toLowerCase()}
-            style={{ background: v }}
+            className={`tb-swatch${same(general.inkColour, v) ? " on" : ""}`}
+            aria-label={`${inkName(v)} ink`}
+            title={`${inkName(v)}. Right-click to unpin.`}
+            aria-pressed={same(general.inkColour, v)}
             onClick={() => setGeneral({ inkColour: v })}
-          />
-        ))}
-        <div className="palette-anchor">
-          <button
-            className="icon-button"
-            aria-label="Ink palette"
-            title="Ink palette"
-            aria-pressed={paletteOpen}
-            onClick={() => setPaletteOpen((o) => !o)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              void updateConfig((c) => ({
+                ...c,
+                general: { ...c.general, inkFavourites: c.general.inkFavourites.filter((f) => f !== v) },
+              }));
+            }}
           >
-            <PaletteIcon size={18} />
+            <span style={{ background: v }} />
           </button>
-          {paletteOpen && <InkPalette onClose={() => setPaletteOpen(false)} />}
-        </div>
+        ))}
+        <button
+          className={`tb-icon${paletteOpen ? " active" : ""}`}
+          aria-label="All inks and highlighters"
+          title="All inks and highlighters"
+          aria-expanded={paletteOpen}
+          onClick={() => setPaletteOpen((o) => !o)}
+        >
+          <PaletteIcon />
+        </button>
+        {paletteOpen && <InkPalette onClose={() => setPaletteOpen(false)} />}
       </div>
 
-      <div role="group" aria-label="Stroke width" className="width-group">
+      <div role="group" aria-label="Nib" className="tb-group">
         {STROKE_WIDTHS.map((w) => (
           <button
             key={w}
-            className="width-button"
-            aria-label={WIDTH_LABEL[w]}
-            title={`${WIDTH_LABEL[w]} (${w} px)`}
+            className={`tb-nib${general.strokeWidth === w ? " on" : ""}`}
+            aria-label={NIB_LABEL[w]}
+            title={NIB_LABEL[w]}
             aria-pressed={general.strokeWidth === w}
             onClick={() => setGeneral({ strokeWidth: w })}
           >
-            <span style={{ width: WIDTH_DOT[w], height: WIDTH_DOT[w] }} />
+            <span style={{ width: NIB_DOT[w], height: NIB_DOT[w] }} />
           </button>
         ))}
       </div>
 
-      <label className="grid-toggle" title="Lock to lines (G)">
+      <label className="tb-toggle" title="Lock to lines (G). Hold Alt to place freely.">
         <input
           type="checkbox"
+          role="switch"
           checked={general.lockToLines}
           onChange={(e) => setGeneral({ lockToLines: e.target.checked })}
         />
         <span className="switch" aria-hidden="true" />
-        <LinesIcon size={18} style={{ color: "var(--mint)" }} />
         <span>Lock to lines</span>
       </label>
 
-      <div className="toolbar-end">
+      <div className="tb-end">
         <button
-          className="icon-button"
+          className="tb-icon"
           aria-label="Undo"
           title="Undo (Ctrl+Z)"
           disabled={!history.canUndo}
@@ -159,7 +176,7 @@ export function Toolbar() {
           <UndoIcon />
         </button>
         <button
-          className="icon-button"
+          className="tb-icon"
           aria-label="Redo"
           title="Redo (Ctrl+Y)"
           disabled={!history.canRedo}
@@ -168,15 +185,26 @@ export function Toolbar() {
           <RedoIcon />
         </button>
         <button
-          className="pill primary"
-          aria-pressed={catchUpOpen}
-          onClick={() => useCatchUp.getState().setOpen(!catchUpOpen)}
+          className="tb-icon"
+          aria-label="Import character sheet"
+          title="Import character sheet (Ctrl+Shift+I)"
+          disabled={!hasCharacter}
+          onClick={() => useImportDialog.getState().setOpen(true)}
         >
-          <CatchUpIcon size={18} />
-          Catch me up
+          <ImportIcon />
         </button>
         <button
-          className="icon-button"
+          className={`tb-icon${handwritingOpen ? " active" : ""}`}
+          aria-label="Handwriting builder"
+          title="Handwriting builder"
+          aria-pressed={handwritingOpen}
+          disabled={!hasCharacter}
+          onClick={() => setHandwritingOpen(!handwritingOpen)}
+        >
+          <HandIcon />
+        </button>
+        <button
+          className="tb-icon"
           aria-label="Export"
           title="Export (Ctrl+Shift+E)"
           onClick={() => useExportDialog.getState().setOpen(true)}
@@ -184,7 +212,7 @@ export function Toolbar() {
           <ExportIcon />
         </button>
         <button
-          className="icon-button"
+          className="tb-icon"
           aria-label="Settings"
           title="Settings (Ctrl+,)"
           onClick={() => openSettings(true)}

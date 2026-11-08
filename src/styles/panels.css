@@ -1,0 +1,551 @@
+/*
+ * Full-window and flyout panels: the handwriting builder (mockup 07) and the ink palette
+ * (mockup 03). Values from docs/mockups/html, through tokens.css.
+ */
+
+/* ---------- Handwriting builder ---------- */
+
+.hand-builder {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--desk);
+  background-image: radial-gradient(
+    ellipse at 55% 45%,
+    var(--desk-centre) 0%,
+    var(--desk) 55%,
+    var(--desk-edge) 100%
+  );
+  color: var(--text);
+}
+.hb-bar {
+  height: var(--toolbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+}
+.hb-bar .brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 700 19px var(--font-display);
+  white-space: nowrap;
+}
+.hb-crumb {
+  color: var(--text-muted);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.hb-crumb span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-crumb b {
+  color: var(--text);
+  font-weight: 700;
+}
+.hb-end {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.hb-btn {
+  height: 44px;
+  border-radius: 11px;
+  border: 0;
+  padding: 0 18px;
+  font: 700 14.5px var(--font-body);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hb-btn.ghost {
+  background: rgba(241, 230, 210, 0.07);
+  color: var(--text-soft);
+}
+.hb-btn.ghost:hover {
+  background: var(--chip-hover);
+}
+.hb-btn.go {
+  background: var(--gilt);
+  color: var(--chrome);
+}
+.hb-btn.go:hover {
+  background: var(--gilt-soft);
+}
+
+.hb-wrap {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 560px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 224px;
+  gap: 20px;
+  padding: 22px 24px;
+  min-height: 0;
+}
+.hb-panel {
+  background: var(--panel);
+  border: 1px solid rgba(241, 230, 210, 0.1);
+  border-radius: var(--radius-popover);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  min-width: 0;
+}
+.hb-ph {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hb-ph h2 {
+  margin: 0;
+  font: 700 20px var(--font-display);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-ph span {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.hb-prog {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(241, 230, 210, 0.1);
+  overflow: hidden;
+  flex: none;
+}
+.hb-prog i {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  border-radius: 4px;
+  transition: width 0.2s;
+}
+.hb-glyphs {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.hb-g {
+  height: 50px;
+  border-radius: 10px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.hb-g.drawn {
+  background: var(--paper);
+  color: var(--ink-text);
+  font: 700 30px/1 var(--font-hand);
+}
+.hb-g.empty {
+  background: transparent;
+  border: 1.5px dashed rgba(241, 230, 210, 0.22);
+  color: rgba(241, 230, 210, 0.45);
+  font: 500 16px/1 var(--font-body);
+}
+.hb-g.empty:hover {
+  border-color: var(--text-muted);
+  color: var(--text-soft);
+}
+.hb-g.sel {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--gilt);
+}
+.hb-legend {
+  display: flex;
+  gap: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  align-items: center;
+  flex: none;
+}
+.hb-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.hb-legend i {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.hb-legend i.drawn {
+  background: var(--paper);
+}
+.hb-legend i.empty {
+  border: 1.5px dashed rgba(241, 230, 210, 0.35);
+}
+.hb-padwrap {
+  display: flex;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+.hb-pad {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  cursor: crosshair;
+  touch-action: none;
+}
+.hb-tools {
+  width: 200px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hb-k {
+  font: 700 11px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0;
+}
+.hb-var {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.hb-var button {
+  height: 62px;
+  border-radius: 10px;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink-text);
+  font: 700 34px/1 var(--font-hand);
+}
+.hb-var button small {
+  font: 600 14px var(--font-body);
+  color: var(--muted-on-paper);
+}
+.hb-var button.on {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--gilt);
+}
+.hb-var button.add {
+  background: transparent;
+  border: 1.5px dashed rgba(241, 230, 210, 0.25);
+  color: var(--text-muted);
+  font: 600 22px var(--font-body);
+}
+.hb-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.hb-tool {
+  height: 44px;
+  border-radius: 10px;
+  border: 0;
+  background: rgba(241, 230, 210, 0.07);
+  color: var(--text-soft);
+  font: 600 14px var(--font-body);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  width: 100%;
+}
+.hb-tool:hover:not(:disabled) {
+  background: var(--chip-hover);
+}
+.hb-tool.center {
+  justify-content: center;
+}
+.hb-tool svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hb-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.hb-preview {
+  grid-column: 1 / span 2;
+  flex-direction: row;
+  gap: 22px;
+  align-items: stretch;
+}
+.hb-preview-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.hb-strip {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border-radius: 14px;
+  background: var(--paper);
+}
+.hb-sliders {
+  width: 360px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+.hb-sl {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+.hb-sl input {
+  width: 100%;
+  accent-color: var(--gilt);
+}
+.hb-sl output {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+@media (max-width: 1100px) {
+  .hb-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(320px, 1fr) auto;
+    overflow-y: auto;
+  }
+  .hb-preview {
+    grid-column: auto;
+    flex-direction: column;
+  }
+  .hb-strip {
+    min-height: 110px;
+  }
+  .hb-sliders {
+    width: auto;
+  }
+}
+
+/* ---------- Ink palette flyout (mockup 03) ---------- */
+
+.flyout {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: -60px;
+  width: 452px;
+  background: var(--panel);
+  border: 1px solid var(--line-panel);
+  border-radius: var(--radius-popover);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.55);
+  padding: 18px 18px 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  cursor: default;
+}
+.flyout::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 74px;
+  width: 12px;
+  height: 12px;
+  background: var(--panel);
+  border-left: 1px solid var(--line-panel);
+  border-top: 1px solid var(--line-panel);
+  transform: rotate(45deg);
+}
+.fh {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.fh h3 {
+  margin: 0;
+  font: 700 12px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fh span {
+  font: 500 13px var(--font-body);
+  color: var(--text-soft);
+}
+.inkgrid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+}
+.ink {
+  height: 40px;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  position: relative;
+}
+.ink:hover {
+  background: var(--chip);
+}
+.ink span {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50% 46% 52% 48%;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.ink.on span {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--gilt);
+}
+/* A small gilt dot under inks pinned to the toolbar. */
+.ink.fav::after {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--gilt);
+}
+.ink.mix {
+  width: 40px;
+  flex: none;
+}
+.paper-sample {
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.hlb {
+  height: 36px;
+  border: 0;
+  padding: 0 4px;
+  font: 600 22px var(--font-hand);
+  color: var(--ink-text);
+  border-radius: 6px;
+}
+.hlb.on {
+  outline: 2px solid var(--gilt);
+  outline-offset: 2px;
+}
+.mixrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mixbtn {
+  height: 40px;
+  border: 1.5px dashed rgba(241, 230, 210, 0.3);
+  background: transparent;
+  border-radius: 10px;
+  color: var(--text-soft);
+  padding: 0 14px;
+  font: 600 13px var(--font-body);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.mixbtn span {
+  font-size: 18px;
+  line-height: 1;
+}
+.mixbtn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+.mixer {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: center;
+}
+.mixer-well input {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+.mixer-sample {
+  height: 56px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font: 400 28px var(--font-hand);
+}
+.mixer-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.flyout-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.photo-menu-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+.photo-menu-check input {
+  accent-color: var(--gilt);
+}

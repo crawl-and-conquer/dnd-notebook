@@ -20,8 +20,18 @@ export function pagePath(notebookPath: string, sectionId: string, fileName: stri
   return joinPath(notebookPath, "pages", sectionId, fileName);
 }
 
-/** `<notebookPath>/glyphs.json` — the character's hand glyph data. */
+/** `<notebookPath>/character.json` — name, cover, sections and hand settings. */
+export function characterPath(notebookPath: string): string {
+  return joinPath(notebookPath, "character.json");
+}
+
+/** `<notebookPath>/hand/hand.json` — the character's drawn glyphs. */
 export function glyphsPath(notebookPath: string): string {
+  return joinPath(notebookPath, "hand", "hand.json");
+}
+
+/** Where builds before 0.2 kept the glyphs; still read if `hand/hand.json` is missing. */
+export function legacyGlyphsPath(notebookPath: string): string {
   return joinPath(notebookPath, "glyphs.json");
 }
 

@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
 import { useUpdates } from "../app/updates";
-import { INK_COLOURS, STROKE_WIDTHS, type AppConfig } from "../model/config";
+import type { AppConfig } from "../model/config";
 import { backend } from "../storage/backend";
 import { useNotebook } from "../store/notebook";
 
@@ -58,42 +58,6 @@ export function GeneralSection() {
       <p className="lead">App settings are stored in {configPath || "the app data folder"}.</p>
 
       <div className="settings-grid">
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={general.lockToLines}
-            onChange={(e) => set({ lockToLines: e.target.checked })}
-          />
-          Lock to lines by default
-        </label>
-        <div className="field">
-          <span id="default-ink">Default ink colour</span>
-          <div className="swatches" role="group" aria-labelledby="default-ink">
-            {INK_COLOURS.map((c) => (
-              <button
-                key={c.id}
-                className="swatch"
-                aria-label={`${c.label} ink`}
-                aria-pressed={general.inkColour.toLowerCase() === c.value.toLowerCase()}
-                style={{ background: c.value }}
-                onClick={() => set({ inkColour: c.value })}
-              />
-            ))}
-          </div>
-        </div>
-        <label className="field">
-          Default stroke width
-          <select
-            value={general.strokeWidth}
-            onChange={(e) => set({ strokeWidth: Number(e.target.value) })}
-          >
-            {STROKE_WIDTHS.map((w) => (
-              <option key={w} value={w}>
-                {w} px
-              </option>
-            ))}
-          </select>
-        </label>
         <div className="field">
           <span>Dates</span>
           <span className="current-model">
@@ -147,7 +111,7 @@ export function GeneralSection() {
 
       <h3 className="sub">Backup</h3>
       <p className="lead">
-        Your notes live in each client’s folder. These cover the app’s own setup, which has no API
+        Your notes live in each character’s folder. These cover the app’s own setup, which has no API
         keys in it.
       </p>
       <span className="inline-row">

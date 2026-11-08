@@ -1,72 +1,88 @@
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { CharacterConfig, ExportSettings } from "../model/config";
+import type { Section } from "../model/character";
 import { backend } from "../storage/backend";
 import type { LoadedPage } from "../storage/notebook";
 import { useNotebook, visibleCharacters } from "../store/notebook";
 import { cssVar } from "../canvas/theme";
-import { pageToMarkdown, snapshotPath } from "./markdown";
+import { pageToMarkdown } from "./markdown";
 import { pageBase, safeName, uniqueNamer } from "./names";
-import {
-  addNotebookPage,
-  contentsPageCount,
-  insertContents,
-  newPdf,
-  type PdfColours,
-} from "./pdf";
-import { bytesToBase64, renderPagePng } from "./render";
+import { addSpreadPage, contentsPageCount, insertContents, newPdf, type PdfColours } from "./pdf";
+import { bytesToBase64, renderSpreadPng, type RenderContext } from "./render";
+import { sheetMarkdown } from "./sheetMarkdown";
 
-export type ExportScope = "all" | "tab" | "page";
+export type ExportScope = "all" | "character" | "section" | "spread";
 
 export type ExportOptions = Omit<ExportSettings, "destination"> & {
   scope: ExportScope;
-  /** Character id (kept as "tabId" for interface compatibility). */
-  tabId?: string;
-  pageId?: string;
+  characterId?: string;
+  sectionId?: string;
+  spreadIndex?: number;
   destination: string;
 };
 
 export type ExportProgress = { done: number; total: number; label: string };
 export type ExportResult = { root: string; pages: number; files: number; cancelled: boolean };
 
-type Target = { tab: CharacterConfig; notebookPath: string; pages: LoadedPage[] };
+type Spread = { left: LoadedPage; right: LoadedPage | null; leftIndex: number };
+type SectionTarget = { section: Section; spreads: Spread[] };
+type Target = { character: CharacterConfig; sections: SectionTarget[] };
 
-/** Which characters and pages an export covers, from what is loaded. */
-export function exportTargets(scope: ExportScope, tabId?: string, pageId?: string): Target[] {
+const pairs = (pages: LoadedPage[]): Spread[] => {
+  const out: Spread[] = [];
+  for (let i = 0; i < pages.length; i += 2) out.push({ left: pages[i], right: pages[i + 1] ?? null, leftIndex: i });
+  return out;
+};
+
+/** Which characters, sections and spreads an export covers, from what is loaded. */
+export function exportTargets(scope: ExportScope, characterId?: string, sectionId?: string, spreadIndex?: number): Target[] {
   const s = useNotebook.getState();
   return visibleCharacters(s.config)
-    .filter((c) => scope === "all" || c.id === tabId)
-    .flatMap((tab) => {
-      const ch = s.characters[tab.id];
+    .filter((c) => scope === "all" || c.id === characterId)
+    .flatMap((character) => {
+      const ch = s.characters[character.id];
       if (ch?.status !== "ok") return [];
-      const allPages = Object.values(ch.sectionPages).flat();
-      const pages = scope === "page" ? allPages.filter((p) => p.page.id === pageId) : allPages;
-      return pages.length ? [{ tab, notebookPath: ch.notebookPath, pages }] : [];
+      const sections = ch.character.sections
+        .filter((sec) => scope === "all" || scope === "character" || sec.id === sectionId)
+        .map((section) => {
+          let spreads = pairs(ch.sectionPages[section.id] ?? []);
+          if (scope === "spread") spreads = spreads.filter((_, i) => i === spreadIndex);
+          return { section, spreads };
+        })
+        .filter((x) => x.spreads.length > 0);
+      return sections.length ? [{ character, sections }] : [];
     });
 }
 
+export const countPages = (targets: Target[]) =>
+  targets.reduce((n, t) => n + t.sections.reduce((m, s) => m + s.spreads.reduce((k, sp) => k + (sp.right ? 2 : 1), 0), 0), 0);
+
 function pdfColours(print: boolean): PdfColours {
   return print
-    ? {
-        background: cssVar("--print-paper"),
-        text: cssVar("--print-text"),
-        muted: cssVar("--print-text-muted"),
-      }
-    : { background: cssVar("--desk"), text: cssVar("--text"), muted: cssVar("--text-muted") };
+    ? { background: "#ffffff", text: "#2b2622", muted: "#6f5a45" }
+    : { background: cssVar("--desk") || "#2b2019", text: cssVar("--text") || "#f1e6d2", muted: cssVar("--text-muted") || "#bfae90" };
 }
 
-const longDate = (iso: string) => format(new Date(iso), "EEE d MMM yyyy");
+const longDate = (iso: string) => {
+  try {
+    return format(parseISO(iso), "EEE d MMM yyyy");
+  } catch {
+    return iso;
+  }
+};
 
 /**
- * Writes Markdown, PDF or both (SPEC: Export) into
- * `<destination>/notebook-export-<date>/<Tab>/...`, plus Reminders.md/.pdf.
+ * Writes Markdown, PDF or both (SPEC: Export) into a fresh `notebook-export-<date>` folder:
+ * `<Character>/<Section>/0001-<slug>.md` per page, `.pdf` per spread, and `<Character>.pdf`
+ * combining every section with a contents page.
  */
 export async function runExport(
   opts: ExportOptions,
   onProgress: (p: ExportProgress) => void,
   signal?: AbortSignal,
 ): Promise<ExportResult> {
-  const targets = exportTargets(opts.scope, opts.tabId, opts.pageId);
-  const total = targets.reduce((n, t) => n + t.pages.length, 0);
+  const targets = exportTargets(opts.scope, opts.characterId, opts.sectionId, opts.spreadIndex);
+  const total = countPages(targets);
   if (!total) throw new Error("There are no pages to export.");
 
   const today = new Date();
@@ -74,7 +90,8 @@ export async function runExport(
   const md = opts.format !== "pdf";
   const pdf = opts.format !== "markdown";
   const colours = pdfColours(opts.printerFriendly);
-  const tabFolder = uniqueNamer();
+  const renderOpts = { theme: opts.printerFriendly ? ("print" as const) : ("screen" as const), pixelRatio: 2, includeImages: opts.includeImages };
+  const charFolder = uniqueNamer();
   let files = 0;
   let done = 0;
 
@@ -88,63 +105,87 @@ export async function runExport(
   };
 
   for (const target of targets) {
-    const dir = tabFolder(safeName(target.tab.name, "Tab"));
-    const combine = pdf && opts.scope !== "page";
-    const combined = combine ? await newPdf(`${target.tab.name}: notebook export`) : null;
-    const offset = combine ? contentsPageCount(target.pages.length) : 0;
-    const combinedTotal = offset + target.pages.length;
+    const s = useNotebook.getState();
+    const ch = s.characters[target.character.id];
+    if (ch?.status !== "ok") continue;
+    const name = target.character.name;
+    const dir = charFolder(safeName(name, "Character"));
+    const hand = { glyphs: ch.glyphs, hand: ch.character.hand };
+    const sheetCtx = { sheet: ch.sheet, trackers: ch.trackers, name };
+    const pill =
+      ch.sheet.identity.classLevel || ch.sheet.combat.maxHp !== null
+        ? [ch.sheet.identity.classLevel, ch.sheet.combat.maxHp !== null ? `${ch.sheet.combat.maxHp} HP` : null].filter(Boolean).join(" · ")
+        : null;
+    const spreadCount = target.sections.reduce((n, x) => n + x.spreads.length, 0);
+    const combine = pdf && opts.scope !== "spread" && opts.scope !== "section";
+    const combined = combine ? await newPdf(`${name}: notebook export`) : null;
+    const offset = combine ? contentsPageCount(spreadCount) : 0;
+    const contents: { title: string; created: string; pageNumber: number }[] = [];
+    const sectionFolder = uniqueNamer();
+    let spreadNo = 0;
 
-    for (const [i, loaded] of target.pages.entries()) {
-      if (signal?.aborted) return { root, pages: done, files, cancelled: true };
-      const page = loaded.page;
-      const base = pageBase(loaded.fileName);
-      onProgress({ done, total, label: `${target.tab.name}: ${page.title || "Untitled page"}` });
-
-      const png = await renderPagePng(page, target.notebookPath, {
-        theme: opts.printerFriendly ? "print" : "screen",
-        pixelRatio: 2,
-        includeImages: opts.includeImages,
-      });
-
-      if (md) {
-        const r = pageToMarkdown(page, {
-          tabName: target.tab.name,
-          fileBase: base,
-          includeImages: opts.includeImages,
-          includeDone: opts.includeDone,
+    for (const { section, spreads } of target.sections) {
+      const secDir = `${dir}/${sectionFolder(safeName(section.name, "Section"))}`;
+      for (const sp of spreads) {
+        if (signal?.aborted) return { root, pages: done, files, cancelled: true };
+        const ctxFor = (lp: LoadedPage, side: "l" | "r", index: number, other: LoadedPage | null): RenderContext => ({
+          notebookPath: ch.notebookPath,
+          side,
+          index,
+          otherTitle: other?.page.title ?? "",
+          pill: side === "l" && section.kind === "sessions" && lp.page.session ? pill : null,
+          sheet: lp.page.sheetPageType ? sheetCtx : undefined,
+          hand,
         });
-        await writeText(`${dir}/${base}.md`, r.markdown);
-        if (opts.includeImages) {
-          await writeBytes(`${dir}/${snapshotPath(base)}`, png);
-          for (const asset of r.assets) {
-            await backend.exportCopyAsset(target.notebookPath, asset, root, `${dir}/${asset}`);
-            files++;
+        onProgress({ done, total, label: `${name}: ${section.name}, ${sp.left.page.title || "Untitled page"}` });
+        const png = await renderSpreadPng(
+          { page: sp.left.page, ctx: ctxFor(sp.left, "l", sp.leftIndex, sp.right) },
+          sp.right ? { page: sp.right.page, ctx: ctxFor(sp.right, "r", sp.leftIndex + 1, sp.left) } : null,
+          renderOpts,
+        );
+        const base = pageBase(sp.left.fileName);
+        const snapshot = `assets/${base}-spread.png`;
+
+        if (md) {
+          if (opts.includeImages) await writeBytes(`${secDir}/${snapshot}`, png);
+          for (const lp of [sp.left, sp.right].filter((x): x is LoadedPage => !!x)) {
+            const r = pageToMarkdown(lp.page, {
+              character: name,
+              section: section.name,
+              snapshot: opts.includeImages ? snapshot : null,
+              includeImages: opts.includeImages,
+              includeDone: opts.includeDone,
+              extra:
+                lp.page.sheetPageType
+                  ? sheetMarkdown(lp.page.sheetPageType, lp.page.sheetIndex ?? 0, ch.sheet, ch.trackers)
+                  : undefined,
+            });
+            await writeText(`${secDir}/${pageBase(lp.fileName)}.md`, r.markdown);
+            if (opts.includeImages) {
+              for (const asset of r.assets) {
+                await backend.exportCopyAsset(ch.notebookPath, asset, root, `${secDir}/${asset}`);
+                files++;
+              }
+            }
+            done++;
+          }
+        } else done += sp.right ? 2 : 1;
+
+        if (pdf) {
+          const title = sp.right && sp.right.page.title && !/, cont\.$/.test(sp.right.page.title)
+            ? `${sp.left.page.title} / ${sp.right.page.title}`
+            : sp.left.page.title || "Untitled page";
+          const meta = { character: name, section: section.name, title, date: longDate(sp.left.page.createdAt) };
+          const single = await newPdf(title);
+          await addSpreadPage(single.doc, single.fonts, png, meta, colours, 1, 1);
+          await writeBytes(`${secDir}/${base}.pdf`, await single.doc.save());
+          if (combined) {
+            spreadNo++;
+            await addSpreadPage(combined.doc, combined.fonts, png, meta, colours, offset + spreadNo, offset + spreadCount);
+            contents.push({ title: `${section.name}: ${title}`, created: meta.date, pageNumber: offset + spreadNo });
           }
         }
       }
-
-      if (pdf) {
-        const meta = {
-          tabName: target.tab.name,
-          pageTitle: page.title,
-          created: longDate(page.createdAt),
-        };
-        const single = await newPdf(page.title || "Untitled page");
-        await addNotebookPage(single.doc, single.fonts, png, meta, colours, 1, 1);
-        await writeBytes(`${dir}/${base}.pdf`, await single.doc.save());
-        if (combined) {
-          await addNotebookPage(
-            combined.doc,
-            combined.fonts,
-            png,
-            meta,
-            colours,
-            offset + i + 1,
-            combinedTotal,
-          );
-        }
-      }
-      done++;
     }
 
     if (combined) {
@@ -152,16 +193,12 @@ export async function runExport(
         combined.doc,
         combined.fonts,
         colours,
-        target.tab.name,
-        `Notebook export, ${format(today, "EEE d MMM yyyy")}. ${target.pages.length} page${target.pages.length === 1 ? "" : "s"}.`,
-        target.pages.map((p, i) => ({
-          title: p.page.title,
-          created: longDate(p.page.createdAt),
-          pageNumber: offset + i + 1,
-        })),
-        combinedTotal,
+        name,
+        `Notebook export, ${format(today, "EEE d MMM yyyy")}. ${spreadCount} spread${spreadCount === 1 ? "" : "s"}.`,
+        contents,
+        offset + spreadCount,
       );
-      await writeBytes(`${dir}/${dir} - all pages.pdf`, await combined.doc.save());
+      await writeBytes(`${dir}/${dir}.pdf`, await combined.doc.save());
     }
   }
 

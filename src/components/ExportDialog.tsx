@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import {
+  countPages,
   exportTargets,
   runExport,
   type ExportProgress,
@@ -9,7 +10,7 @@ import {
   type ExportScope,
 } from "../export/runExport";
 import { backend } from "../storage/backend";
-import { currentPageOf, useNotebook } from "../store/notebook";
+import { currentSpreadPages, useNotebook } from "../store/notebook";
 import { CloseIcon } from "./Icons";
 
 export const useExportDialog = create<{ open: boolean; setOpen(o: boolean): void }>((set) => ({
@@ -41,12 +42,17 @@ function Dialog() {
   const setOpen = useExportDialog((s) => s.setOpen);
   const defaults = useNotebook((s) => s.config.export);
   const view = useNotebook((s) => s.view);
-  const cur = useNotebook(useShallow(currentPageOf));
-  const tabId = "characterId" in view ? view.characterId : undefined;
-  const pageId = cur?.loaded.page.id;
-  const tabName = useNotebook((s) => s.config.characters.find((c) => c.id === tabId)?.name);
+  const characterId = "characterId" in view ? view.characterId : undefined;
+  const sectionId = "characterId" in view ? view.sectionId : undefined;
+  const spreadIndex = "characterId" in view ? view.spreadIndex : undefined;
+  const name = useNotebook((s) => s.config.characters.find((c) => c.id === characterId)?.name);
+  const sectionName = useNotebook((s) => {
+    const ch = characterId ? s.characters[characterId] : undefined;
+    return ch?.status === "ok" ? ch.character.sections.find((x) => x.id === sectionId)?.name : undefined;
+  });
+  const spread = useNotebook(useShallow(currentSpreadPages));
 
-  const [scope, setScope] = useState<ExportScope>(pageId ? "page" : tabId ? "tab" : "all");
+  const [scope, setScope] = useState<ExportScope>(characterId ? "character" : "all");
   const [format, setFormat] = useState(defaults.format);
   const [destination, setDestination] = useState("");
   const [includeImages, setIncludeImages] = useState(defaults.includeImages);
@@ -69,14 +75,14 @@ function Dialog() {
     return () => window.removeEventListener("keydown", onKey);
   }, [phase.kind, setOpen]);
 
-  const count = exportTargets(scope, tabId, pageId).reduce((n, t) => n + t.pages.length, 0);
+  const count = countPages(exportTargets(scope, characterId, sectionId, spreadIndex));
 
   const start = async () => {
     abort.current = new AbortController();
     setPhase({ kind: "running", progress: { done: 0, total: count, label: "Starting" } });
     try {
       const result = await runExport(
-        { scope, tabId, pageId, format, destination, includeImages, includeDone, printerFriendly },
+        { scope, characterId, sectionId, spreadIndex, format, destination, includeImages, includeDone, printerFriendly },
         (progress) => setPhase({ kind: "running", progress }),
         abort.current.signal,
       );
@@ -113,33 +119,43 @@ function Dialog() {
               <legend>What to export</legend>
               <label>
                 <input
-                  ref={firstField}
                   type="radio"
                   name="scope"
+                  ref={firstField}
                   checked={scope === "all"}
                   onChange={() => setScope("all")}
                 />
-                All tabs
+                All characters
               </label>
-              <label className={tabId ? "" : "disabled"}>
+              <label className={characterId ? "" : "disabled"}>
                 <input
                   type="radio"
                   name="scope"
-                  disabled={!tabId}
-                  checked={scope === "tab"}
-                  onChange={() => setScope("tab")}
+                  disabled={!characterId}
+                  checked={scope === "character"}
+                  onChange={() => setScope("character")}
                 />
-                This tab{tabName ? `: ${tabName}` : ""}
+                This character{name ? `: ${name}` : ""}
               </label>
-              <label className={pageId ? "" : "disabled"}>
+              <label className={sectionId ? "" : "disabled"}>
                 <input
                   type="radio"
                   name="scope"
-                  disabled={!pageId}
-                  checked={scope === "page"}
-                  onChange={() => setScope("page")}
+                  disabled={!sectionId}
+                  checked={scope === "section"}
+                  onChange={() => setScope("section")}
                 />
-                This page{cur ? `: ${cur.loaded.page.title || "Untitled page"}` : ""}
+                This section{sectionName ? `: ${sectionName}` : ""}
+              </label>
+              <label className={spread ? "" : "disabled"}>
+                <input
+                  type="radio"
+                  name="scope"
+                  disabled={!spread}
+                  checked={scope === "spread"}
+                  onChange={() => setScope("spread")}
+                />
+                This spread{spread ? `: ${spread.left.page.title || "Untitled page"}` : ""}
               </label>
             </fieldset>
 
@@ -212,7 +228,7 @@ function Dialog() {
                   disabled={format === "markdown"}
                   onChange={(e) => setPrinterFriendly(e.target.checked)}
                 />
-                Printer friendly PDF (white paper, light blue grid, dark ink)
+                Printer friendly PDF (white paper, faint rules)
               </label>
             </fieldset>
 

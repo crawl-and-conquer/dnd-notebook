@@ -1,146 +1,79 @@
 import Konva from "konva";
 import { useEffect, useRef } from "react";
-import { Group, Path, Text } from "react-konva";
-import type { Character } from "../model/character";
-import type { GlyphsData } from "../model/hand";
-import { PAD_BASELINE_Y, pickVariant } from "../model/hand";
-import { glyphAdvance, glyphStrokePath } from "../handwriting/glyphPaths";
-import { LINE_HEIGHT } from "./ElementNode";
+import { Shape } from "react-konva";
+import { drawLaid, layoutText, type TextSpec } from "../handwriting/handLayout";
+import { useTools } from "../store/tools";
+import { DEFAULT_HAND_STYLE, useFontsVersion, useHand } from "./HandContext";
 
-type HandTextProps = {
-  text: string;
-  width: number;
-  fontSize: number;
+/** Room around the text box for slant, descenders and wobble when caching. */
+const BLEED = 14;
+
+/**
+ * Text drawn in the character's hand as one Konva shape. It is cached as a bitmap and redrawn
+ * only when its text, size, colour, the hand, the loaded fonts or the zoom change, so pages
+ * with a lot of writing pan and zoom as smoothly as empty ones.
+ */
+export function HandText({
+  spec,
+  colour,
+  strike = false,
+  opacity = 1,
+  x = 0,
+  y = 0,
+}: {
+  spec: TextSpec;
   colour: string;
-  glyphs: GlyphsData;
-  hand: Character["hand"];
-};
+  strike?: boolean;
+  opacity?: number;
+  x?: number;
+  y?: number;
+}) {
+  const ref = useRef<Konva.Shape>(null);
+  const ctx = useHand();
+  const fonts = useFontsVersion((s) => s.version);
+  const zoom = useTools((s) => s.zoom);
+  const style = ctx?.hand ?? DEFAULT_HAND_STYLE;
+  const laid = layoutText(spec, ctx?.glyphs ?? null, style);
 
-type CharLayout = {
-  char: string;
-  x: number;
-  y: number;
-  charPos: number; // position in the full text string (for variant selection)
-};
-
-/** Lay out characters in lines, returning per-char positions. */
-function layoutChars(
-  text: string,
-  width: number,
-  fontSize: number,
-  glyphs: GlyphsData,
-  spacing: number, // extra spacing in scaled pixels
-  scale: number,
-): CharLayout[] {
-  const lineH = fontSize * LINE_HEIGHT;
-  const result: CharLayout[] = [];
-  let cx = 0;
-  let cy = 0;
-  let charPos = 0;
-
-  // Split into words to do word-wrap
-  const tokens = text.split(/([ \n])/);
-  for (const token of tokens) {
-    if (token === "\n") {
-      cx = 0;
-      cy += lineH;
-      charPos++;
-      continue;
-    }
-    if (token === "") continue;
-
-    // Measure word width first to decide wrapping
-    let wordW = 0;
-    for (const ch of token) {
-      const g = glyphs[ch];
-      if (g && g.length > 0 && g[0].length > 0) {
-        wordW += glyphAdvance(g[0]) * scale + spacing;
-      } else {
-        wordW += fontSize * 0.5 + spacing;
-      }
-    }
-
-    // Wrap before the word if it overflows (but not at the start of a line)
-    if (cx > 0 && cx + wordW > width) {
-      cx = 0;
-      cy += lineH;
-    }
-
-    for (const ch of token) {
-      const g = glyphs[ch];
-      let charW: number;
-      if (ch === " ") {
-        charW = fontSize * 0.3 + spacing;
-      } else if (g && g.length > 0 && g[0].length > 0) {
-        charW = glyphAdvance(g[0]) * scale + spacing;
-      } else {
-        charW = fontSize * 0.5 + spacing;
-      }
-      result.push({ char: ch, x: cx, y: cy, charPos });
-      cx += charW;
-      charPos++;
-    }
-  }
-
-  return result;
-}
-
-export function HandText({ text, width, fontSize, colour, glyphs, hand }: HandTextProps) {
-  const groupRef = useRef<Konva.Group>(null);
-
-  const scale = (fontSize * (hand.size / 100)) / 100;
-  const spacing = hand.spacing * scale;
-  // y offset so glyph baseline aligns with Caveat's baseline within a line
-  // Caveat baseline ≈ fontSize * 0.78 from line top
-  const baselineY = fontSize * 0.78;
-  const glyphOriginY = -(PAD_BASELINE_Y * scale) + baselineY;
-
-  const chars = layoutChars(text, width, fontSize, glyphs, spacing, scale);
-  const strokeW = Math.max(1, fontSize * 0.025);
-
-  // Cache the group after render for performance (40-line spreads)
   useEffect(() => {
-    groupRef.current?.cache();
-  });
+    const s = ref.current;
+    if (!s) return;
+    s.clearCache();
+    if (laid.lines.some((l) => l.items.length)) {
+      s.cache({
+        x: -BLEED,
+        y: -BLEED,
+        width: spec.width + BLEED * 2 + laid.fontPx,
+        height: laid.height + BLEED * 2,
+        pixelRatio: Math.min(4, (window.devicePixelRatio || 1) * Math.max(1.5, zoom)),
+      });
+    }
+    s.getLayer()?.batchDraw();
+  }, [laid, colour, strike, style, fonts, zoom, spec.width]);
 
   return (
-    <Group ref={groupRef}>
-      {chars.map(({ char, x, y, charPos }) => {
-        if (char === " " || char === "\n") return null;
-        const g = glyphs[char];
-        if (!g || g.length === 0 || g[0].length === 0) {
-          // Fallback: Caveat
-          return (
-            <Text
-              key={charPos}
-              x={x}
-              y={y}
-              text={char}
-              fontSize={fontSize}
-              fontFamily="'Caveat', cursive"
-              lineHeight={LINE_HEIGHT}
-              fill={colour}
-              wrap="none"
-            />
-          );
-        }
-
-        const vi = pickVariant(char.charCodeAt(0), charPos, g.length);
-        const variant = g[vi] ?? g[0];
-        const opts = { scale, slant: hand.slant, wobble: hand.wobble, strokeWidth: strokeW };
-        const wobbleSeed = char.charCodeAt(0) * 0.137 + charPos * 0.019;
-
-        return (
-          <Group key={charPos} x={x} y={y + glyphOriginY}>
-            {variant.map((stroke, si) => {
-              const d = glyphStrokePath(stroke, opts, wobbleSeed + si * 0.07);
-              return d ? (
-                <Path key={si} data={d} fill={colour} strokeWidth={0} perfectDrawEnabled={false} />
-              ) : null;
-            })}
-          </Group>
-        );
-      })}
-    </Group>
+    <Shape
+      ref={ref}
+      x={x}
+      y={y}
+      width={spec.width}
+      height={laid.height}
+      opacity={opacity}
+      perfectDrawEnabled={false}
+      sceneFunc={(c) => drawLaid(c._context, laid, style, { colour, strike })}
+      hitFunc={(c, shape) => {
+        c.beginPath();
+        c.rect(0, 0, spec.width, laid.height);
+        c.closePath();
+        c.fillStrokeShape(shape);
+      }}
+    />
   );
+}
+
+/** Height of a text element as laid out, for editors and exports. */
+export function useLaidHeight(spec: TextSpec): number {
+  const ctx = useHand();
+  useFontsVersion((s) => s.version);
+  return layoutText(spec, ctx?.glyphs ?? null, ctx?.hand ?? DEFAULT_HAND_STYLE).height;
 }

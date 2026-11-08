@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { backend } from "../storage/backend";
 
-/** Pasted images are placed no wider than this (SPEC: Paste and other shortcuts). */
-export const MAX_IMAGE_WIDTH = 800;
+/** Photos are placed at most 260 px wide by default (SPEC: Photos); they can be resized after. */
+export const MAX_IMAGE_WIDTH = 260;
+/** ...and no taller than this, so a portrait photo still fits on the page. */
+export const MAX_IMAGE_HEIGHT = 300;
 
 const cache = new Map<string, Promise<HTMLImageElement>>();
 const key = (notebookPath: string, rel: string) => `${notebookPath}|${rel}`;
@@ -81,8 +83,8 @@ export async function importImage(
   return { rel, width: canvas.width, height: canvas.height };
 }
 
-/** Placed size: at most MAX_IMAGE_WIDTH wide, keeping the aspect ratio. */
+/** Placed size: at most 260 x 300, keeping the aspect ratio; small images keep their size. */
 export function placedSize(width: number, height: number): { w: number; h: number } {
-  const w = Math.min(MAX_IMAGE_WIDTH, width);
-  return { w, h: Math.round((height * w) / width) };
+  const k = Math.min(1, MAX_IMAGE_WIDTH / width, MAX_IMAGE_HEIGHT / height);
+  return { w: Math.round(width * k), h: Math.round(height * k) };
 }

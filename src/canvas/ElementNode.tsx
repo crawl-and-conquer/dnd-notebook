@@ -1,85 +1,49 @@
 import Konva from "konva";
 import { memo } from "react";
-import { Arrow, Ellipse, Group, Image as KImage, Line, Path, Rect, Shape, Text } from "react-konva";
+import { Arrow, Ellipse, Group, Line, Path, Rect, Shape } from "react-konva";
 import type { Element } from "../model/page";
+import { drawLaid, layoutText } from "../handwriting/handLayout";
 import { useAsset } from "./assets";
-import { TEXT_STYLE, strokePath } from "./elements";
-import { useHand } from "./HandContext";
-import { HandText } from "./HandText";
+import { strokePath } from "./elements";
+import { DEFAULT_HAND_STYLE, useFontsVersion, useHand } from "./HandContext";
+import { HandText, useLaidHeight } from "./HandText";
 import { cssVar, useCanvasTheme } from "./theme";
 
 /** Reads a design token (CSS variable) so canvas colours match the chrome. */
 export const token = cssVar;
 
-export const FONT_BODY = "Satoshi, 'Helvetica Neue', Arial, sans-serif";
-export const FONT_DISPLAY = "'Bricolage Grotesque', Satoshi, sans-serif";
-export const LINE_HEIGHT = 1.4;
-export const HEADING_LINE_HEIGHT = 1.15;
-export const CHECK_SIZE = 18;
+export const FONT_BODY = "'Alegreya Sans', 'Helvetica Neue', Arial, sans-serif";
+export const FONT_DISPLAY = "Alegreya, Georgia, serif";
+export const FONT_HAND = "Caveat, cursive";
+export const FONT_MONO = "'Share Tech Mono', monospace";
+/** Checklist box size and the gap before its text (mockup 01: 17 px box, 10 px gap). */
+export const CHECK_SIZE = 17;
 export const CHECK_GAP = 10;
-export const ROW_GAP = 10;
 
 const HIT = 14;
 
-// ----- text measuring -----
+/** Kept for callers that cleared Konva's text measure cache when fonts loaded. */
+export function clearMeasureCache() {}
 
-let measurer: Konva.Text | null = null;
-const measureCache = new Map<string, number>();
-export function clearMeasureCache() {
-  measureCache.clear();
-}
+type Checklist = Extract<Element, { type: "checklist" }>;
 
-type Font = {
-  fontSize: number;
-  fontFamily?: string;
-  fontStyle?: string;
-  lineHeight?: number;
-  letterSpacing?: number;
-};
-
-function measurerWith(font: Font): Konva.Text {
-  measurer ??= new Konva.Text({ wrap: "word" });
-  measurer.setAttrs({
-    fontFamily: font.fontFamily ?? FONT_BODY,
-    fontStyle: font.fontStyle ?? "normal",
-    lineHeight: font.lineHeight ?? LINE_HEIGHT,
-    letterSpacing: font.letterSpacing ?? 0,
-    fontSize: font.fontSize,
-  });
-  return measurer;
-}
-
-export function measureTextHeight(text: string, width: number, font: Font): number {
-  const k = `h|${JSON.stringify(font)}|${width}|${text}`;
-  const hit = measureCache.get(k);
-  if (hit !== undefined) return hit;
-  const m = measurerWith(font);
-  m.setAttrs({ text: text || " ", width });
-  const h = m.height();
-  measureCache.set(k, h);
-  return h;
-}
-
-
-const textFont = (el: Extract<Element, { type: "text" }>): Font =>
-  el.heading
-    ? {
-        fontSize: el.fontSize,
-        fontFamily: FONT_DISPLAY,
-        fontStyle: "600",
-        lineHeight: HEADING_LINE_HEIGHT,
-        letterSpacing: -0.02 * el.fontSize,
-      }
-    : { fontSize: el.fontSize };
-
-export function checklistRows(el: Extract<Element, { type: "checklist" }>) {
-  const fontSize = TEXT_STYLE.checklist.fontSize;
+/** Row positions for a checklist: each item takes as many 32 px lines as its text needs. */
+export function useChecklistRows(el: Checklist) {
+  const ctx = useHand();
+  useFontsVersion((s) => s.version);
   const textW = Math.max(40, el.w - CHECK_SIZE - CHECK_GAP);
   let y = 0;
   return el.items.map((item) => {
-    const textH = Math.max(CHECK_SIZE + 2, measureTextHeight(item.text, textW, { fontSize }));
-    const row = { item, y, h: textH, textH, textW, fontSize };
-    y += textH + ROW_GAP;
+    const spec = {
+      text: item.text || " ",
+      width: textW,
+      fontSize: 26,
+      font: el.font,
+      elementId: `${el.id}:${item.id}`,
+    };
+    const laid = layoutText(spec, ctx?.glyphs ?? null, ctx?.hand ?? DEFAULT_HAND_STYLE);
+    const row = { item, y, h: laid.height, spec, baseline: laid.lines[0]?.baseline ?? 25 };
+    y += laid.height;
     return row;
   });
 }
@@ -91,6 +55,8 @@ type Props = {
   notebookPath: string;
   draggable: boolean;
   hidden: boolean;
+  /** False while drawing, so pen strokes start on top of existing writing. */
+  listening?: boolean;
   dragBoundFunc?: (pos: Konva.Vector2d) => Konva.Vector2d;
   onDragEnd?: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onDblClick?: (id: string) => void;
@@ -107,6 +73,7 @@ function ElementNodeImpl(p: Props) {
       y={el.y}
       rotation={el.rotation}
       draggable={p.draggable}
+      listening={p.listening ?? true}
       visible={!p.hidden}
       dragBoundFunc={p.dragBoundFunc}
       onDragEnd={p.onDragEnd}
@@ -122,7 +89,6 @@ export const ElementNode = memo(ElementNodeImpl);
 
 function Body({ el, notebookPath, onToggleItem }: Props) {
   const t = useCanvasTheme();
-  const hand = useHand();
   switch (el.type) {
     case "stroke":
       return (
@@ -190,62 +156,135 @@ function Body({ el, notebookPath, onToggleItem }: Props) {
         />
       );
     case "text": {
-      const f = textFont(el);
-      // Use hand rendering when glyphs are available and it's a plain (non-heading) text element
-      if (hand && !el.heading) {
-        return (
-          <HandText
-            text={el.text}
-            width={el.w}
-            fontSize={f.fontSize}
-            colour={t.ink(el.colour)}
-            glyphs={hand.glyphs}
-            hand={hand.hand}
-          />
-        );
-      }
+      const spec = {
+        text: el.text,
+        width: el.w,
+        fontSize: el.fontSize,
+        font: el.font,
+        heading: el.heading,
+        elementId: el.id,
+      };
+      const text = <HandText spec={spec} colour={t.ink(el.colour)} />;
+      if (!el.sticky) return text;
       return (
-        <Text
-          text={el.text}
-          width={el.w}
-          fontSize={f.fontSize}
-          fontFamily={f.fontFamily ?? FONT_BODY}
-          fontStyle={f.fontStyle ?? "normal"}
-          letterSpacing={f.letterSpacing ?? 0}
-          lineHeight={f.lineHeight ?? LINE_HEIGHT}
-          fill={t.ink(el.colour)}
-          wrap="word"
-        />
+        <>
+          <StickyBack spec={spec} />
+          {text}
+        </>
       );
     }
     case "checklist":
-      return <Checklist el={el} onToggleItem={onToggleItem} />;
+      return <ChecklistBody el={el} onToggleItem={onToggleItem} />;
     case "image":
       return <ImageBody el={el} notebookPath={notebookPath} />;
   }
 }
 
-function Checklist({
+/** Padding between a sticky note's edge and its writing. */
+export const STICKY_PAD = 14;
+
+/** A sticky note behind a text element: yellow paper, a soft shadow and a strip of tape. */
+function StickyBack({ spec }: { spec: Parameters<typeof useLaidHeight>[0] }) {
+  const t = useCanvasTheme();
+  const h = useLaidHeight(spec);
+  const w = spec.width + STICKY_PAD * 2;
+  const total = h + STICKY_PAD * 2;
+  return (
+    <Shape
+      x={-STICKY_PAD}
+      y={-STICKY_PAD}
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx) => {
+        const c = ctx._context;
+        c.save();
+        if (t.name === "screen") {
+          c.shadowColor = t.token("--sticky-note-shadow");
+          c.shadowBlur = 8;
+          c.shadowOffsetY = 3;
+        }
+        c.fillStyle = t.token("--sticky-note");
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.lineTo(w, 1);
+        c.lineTo(w - 1, total);
+        c.lineTo(1, total - 1);
+        c.closePath();
+        c.fill();
+        c.restore();
+        // Tape across the top edge.
+        c.save();
+        c.translate(w / 2, 0);
+        c.rotate(-0.04);
+        c.fillStyle = t.token("--tape");
+        c.fillRect(-36, -9, 72, 18);
+        c.restore();
+      }}
+    />
+  );
+}
+
+/** A hand-drawn checkbox: uneven corners, tilted a little, with a tick when done. */
+function CheckBox({ done, colour, seed }: { done: boolean; colour: string; seed: number }) {
+  return (
+    <Shape
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx, shape) => {
+        const c = ctx._context;
+        const s = CHECK_SIZE;
+        c.save();
+        c.translate(s / 2, s / 2);
+        c.rotate(((-4 + (seed % 5) - 2) * Math.PI) / 180);
+        c.translate(-s / 2, -s / 2);
+        c.strokeStyle = colour;
+        c.lineWidth = 2;
+        c.lineJoin = "round";
+        c.beginPath();
+        if (c.roundRect) c.roundRect(1, 1, s - 2, s - 2, [3, 5, 2, 4]);
+        else c.rect(1, 1, s - 2, s - 2);
+        c.stroke();
+        if (done) {
+          c.lineWidth = 2.5;
+          c.lineCap = "round";
+          c.beginPath();
+          c.moveTo(3, 7);
+          c.lineTo(7, 13);
+          c.lineTo(15, -3);
+          c.stroke();
+        }
+        c.restore();
+        ctx.fillStrokeShape(shape);
+      }}
+      hitFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.rect(-6, -6, CHECK_SIZE + 12, CHECK_SIZE + 12);
+        ctx.closePath();
+        ctx.fillStrokeShape(shape);
+      }}
+    />
+  );
+}
+
+function ChecklistBody({
   el,
   onToggleItem,
 }: {
-  el: Extract<Element, { type: "checklist" }>;
+  el: Checklist;
   onToggleItem?: (elementId: string, itemId: string) => void;
 }) {
   const t = useCanvasTheme();
-  const ink = t.token("--ink-white");
-  const mint = t.token("--mint");
-  const muted = t.token("--text-muted");
-  const rows = checklistRows(el);
-  const total = rows.length ? rows[rows.length - 1].y + rows[rows.length - 1].h : CHECK_SIZE;
+  const ink = t.ink(el.colour);
+  const rows = useChecklistRows(el);
+  const total = rows.length ? rows[rows.length - 1].y + rows[rows.length - 1].h : 32;
   return (
     <>
       {/* Invisible backing so the whole list is clickable and draggable. */}
       <Rect width={el.w} height={total} fill="rgba(0,0,0,0.001)" />
-      {rows.map(({ item, y, textW, fontSize }) => (
+      {rows.map(({ item, y, spec, baseline }, i) => (
         <Group key={item.id} y={y} name={`checklist-item ci-${item.id}`}>
           <Group
             name="checkbox"
+            y={baseline - CHECK_SIZE + 1}
             onClick={(e) => {
               e.cancelBubble = true;
               onToggleItem?.(el.id, item.id);
@@ -255,35 +294,14 @@ function Checklist({
               onToggleItem?.(el.id, item.id);
             }}
           >
-            <Rect
-              y={2}
-              width={CHECK_SIZE}
-              height={CHECK_SIZE}
-              stroke={item.done ? mint : ink}
-              strokeWidth={2}
-              hitStrokeWidth={8}
-              fill="rgba(0,0,0,0.001)"
-            />
-            {item.done && (
-              <Line
-                points={[4, 11, 8, 15, 14, 6]}
-                stroke={mint}
-                strokeWidth={2}
-                lineCap="round"
-                lineJoin="round"
-              />
-            )}
+            <CheckBox done={item.done} colour={ink} seed={i * 7 + item.id.charCodeAt(0)} />
           </Group>
-          <Text
+          <HandText
             x={CHECK_SIZE + CHECK_GAP}
-            text={item.text}
-            width={textW}
-            fontSize={fontSize}
-            fontFamily={FONT_BODY}
-            lineHeight={LINE_HEIGHT}
-            fill={item.done ? muted : ink}
-            textDecoration={item.done ? "line-through" : ""}
-            wrap="word"
+            spec={spec}
+            colour={ink}
+            strike={item.done}
+            opacity={item.done ? 0.7 : 1}
           />
         </Group>
       ))}
@@ -291,226 +309,194 @@ function Checklist({
   );
 }
 
-// Seeded pseudo-random in [0, 1)
+// ----- photos (SPEC: Photos; mockups 01 and 02) -----
+
+type Photo = Extract<Element, { type: "image" }>;
+type Pad = { l: number; t: number; r: number; b: number };
+
+/** Border around the picture: Print 10 / 10 / 10 / 30, Negative 24 / 12 / 26 / 12. */
+export function photoPad(frame: Photo["frame"]): Pad {
+  if (frame === "print") return { l: 10, t: 10, r: 10, b: 30 };
+  if (frame === "negative") return { l: 12, t: 24, r: 12, b: 26 };
+  return { l: 0, t: 0, r: 0, b: 0 };
+}
+
+/** Seeded pseudo-random in [0, 1), so each photo's tape is its own but never changes. */
 function sr(seed: number, i: number): number {
   const x = Math.sin(seed * 9301 + i * 49297 + 7919) * 100000;
   return x - Math.floor(x);
 }
 
-type Pad = { l: number; t: number; r: number; b: number };
-function framePad(frame: "print" | "negative" | "none"): Pad {
-  if (frame === "print") return { l: 10, t: 10, r: 10, b: 30 };
-  if (frame === "negative") return { l: 16, t: 24, r: 16, b: 24 };
-  return { l: 0, t: 0, r: 0, b: 0 };
+let grain: HTMLCanvasElement | null = null;
+/** A small tile of film grain, made once. */
+function grainTile(): HTMLCanvasElement {
+  if (grain) return grain;
+  grain = document.createElement("canvas");
+  grain.width = grain.height = 96;
+  const c = grain.getContext("2d");
+  if (c) {
+    const d = c.createImageData(96, 96);
+    let s = 1234567;
+    for (let i = 0; i < d.data.length; i += 4) {
+      s = (s * 16807) % 2147483647;
+      const v = s % 255;
+      d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+      d.data[i + 3] = 40;
+    }
+    c.putImageData(d, 0, 0);
+  }
+  return grain;
 }
 
-function TapeStrip({
-  cx,
-  cy,
-  baseAngle,
-  seed,
-  si,
-}: {
-  cx: number;
-  cy: number;
-  baseAngle: number;
-  seed: number;
-  si: number;
-}) {
-  const len = 76 + sr(seed, si) * 10;
-  const W = 26;
-  const angle = baseAngle + (sr(seed, si + 1) - 0.5) * 10;
-  return (
-    <Shape
-      x={cx}
-      y={cy}
-      listening={false}
-      perfectDrawEnabled={false}
-      sceneFunc={(ctx) => {
-        const c = (ctx as unknown as { _context: CanvasRenderingContext2D })._context;
-        const L = len / 2;
-        const H = W / 2;
-        const j = W * 0.3;
-        const tl0 = (sr(seed, si + 2) - 0.5) * j;
-        const tl1 = (sr(seed, si + 3) - 0.5) * j;
-        const tr0 = (sr(seed, si + 4) - 0.5) * j;
-        const tr1 = (sr(seed, si + 5) - 0.5) * j;
-        c.save();
-        c.rotate((angle * Math.PI) / 180);
-        c.beginPath();
-        c.moveTo(-L + tl0, -H);
-        c.lineTo(-L + tl1, 0);
-        c.lineTo(-L + tl0, H);
-        c.lineTo(L + tr0, H);
-        c.lineTo(L + tr1, 0);
-        c.lineTo(L + tr0, -H);
-        c.closePath();
-        c.fillStyle = "rgba(238,226,192,.72)";
-        c.fill();
-        c.restore();
-      }}
-    />
-  );
+/** Tape torn at both ends, faintly striped, laid across a corner. */
+function drawTape(c: CanvasRenderingContext2D, cx: number, cy: number, angle: number, seed: number, i: number, fill: string) {
+  const len = 74 + sr(seed, i) * 14;
+  const h = 24 + sr(seed, i + 1) * 4;
+  const a = ((angle + (sr(seed, i + 2) - 0.5) * 12) * Math.PI) / 180;
+  const L = len / 2;
+  const H = h / 2;
+  c.save();
+  c.translate(cx, cy);
+  c.rotate(a);
+  c.beginPath();
+  // Ragged long edges and torn, pointed ends (as the mockup's clip path).
+  const top = [0.03, 0.12, 0.22, 0.34, 0.46, 0.58, 0.7, 0.82, 0.93];
+  c.moveTo(-L, 0);
+  top.forEach((f, k) => c.lineTo(-L + f * len, -H + (k % 2 ? 0.07 * h * (0.6 + sr(seed, i + 3 + k)) : 0)));
+  c.lineTo(L, (sr(seed, i + 13) - 0.5) * 4);
+  [...top].reverse().forEach((f, k) => c.lineTo(-L + f * len, H - (k % 2 ? 0.08 * h * (0.6 + sr(seed, i + 14 + k)) : 0)));
+  c.closePath();
+  c.fillStyle = fill;
+  c.fill();
+  c.clip();
+  c.fillStyle = "rgba(255,255,255,0.12)";
+  for (let x = -L; x < L; x += 6) c.fillRect(x, -H, 2, h);
+  c.restore();
 }
 
-function SprocketRow({
-  x0,
-  y,
-  frameWidth,
-}: {
-  x0: number;
-  y: number;
-  frameWidth: number;
-}) {
-  const holes: number[] = [];
-  for (let x = 8; x < frameWidth - 8; x += 20) holes.push(x);
-  return (
-    <>
-      {holes.map((hx, i) => (
-        <Ellipse
-          key={i}
-          x={x0 + hx}
-          y={y}
-          radiusX={4}
-          radiusY={4}
-          fill="#ede5d0"
-          listening={false}
-        />
-      ))}
-    </>
-  );
-}
-
-function ImageBody({
-  el,
-  notebookPath,
-}: {
-  el: Extract<Element, { type: "image" }>;
-  notebookPath: string;
-}) {
+function ImageBody({ el, notebookPath }: { el: Photo; notebookPath: string }) {
   const t = useCanvasTheme();
   const img = useAsset(notebookPath, el.asset);
+  const hand = useHand();
+  useFontsVersion((s) => s.version);
   if (!t.images) return null;
 
-  const pad = framePad(el.frame);
+  const pad = photoPad(el.frame);
+  const fx = -pad.l;
+  const fy = -pad.t;
   const fw = el.w + pad.l + pad.r;
-  const ftlX = -pad.l;
-  const ftlY = -pad.t;
-  const ftrX = el.w + pad.r;
-  const ftrY = -pad.t;
-  const fblX = -pad.l;
-  const fblY = el.h + pad.b;
-  const fbrX = el.w + pad.r;
-  const fbrY = el.h + pad.b;
-
-  if (!img) {
-    return (
-      <>
-        {el.frame === "print" && (
-          <Rect
-            x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
-            fill="#f8f4ea"
-            shadowColor="rgba(50,30,10,0.28)" shadowBlur={20} shadowOffsetY={12}
-          />
-        )}
-        {el.frame === "negative" && (
-          <Rect x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b} fill="#17120f" />
-        )}
-        <Rect
-          width={el.w} height={el.h}
-          stroke={t.token("--line-strong")} dash={[6, 6]} strokeWidth={2}
-        />
-        <TapeStrip cx={ftlX} cy={ftlY} baseAngle={40} seed={el.tapeSeed} si={0} />
-        <TapeStrip cx={ftrX} cy={ftrY} baseAngle={-40} seed={el.tapeSeed} si={6} />
-        <TapeStrip cx={fblX} cy={fblY} baseAngle={-40} seed={el.tapeSeed} si={12} />
-        <TapeStrip cx={fbrX} cy={fbrY} baseAngle={40} seed={el.tapeSeed} si={18} />
-      </>
-    );
-  }
+  const fh = el.h + pad.t + pad.b;
+  const tape = t.token("--tape") || "rgba(238,226,192,.72)";
+  const caption =
+    el.frame === "print" && el.caption
+      ? layoutText(
+          { text: el.caption, width: Math.max(20, el.w - 4), fontSize: 19, font: "hand", heading: true, elementId: el.id },
+          hand?.glyphs ?? null,
+          hand?.hand ?? DEFAULT_HAND_STYLE,
+        )
+      : null;
 
   return (
-    <>
-      {el.frame === "print" && (
-        <Rect
-          x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
-          fill="#f8f4ea"
-          shadowColor="rgba(50,30,10,0.28)" shadowBlur={20} shadowOffsetY={12}
-          perfectDrawEnabled={false}
-        />
-      )}
-      {el.frame === "negative" && (
-        <Rect
-          x={ftlX} y={ftlY} width={fw} height={el.h + pad.t + pad.b}
-          fill="#17120f" perfectDrawEnabled={false}
-        />
-      )}
-
-      <KImage image={img} width={el.w} height={el.h} perfectDrawEnabled={false} />
-
-      {el.filmLook && (
-        <Rect
-          width={el.w} height={el.h}
-          fill="rgba(255,160,50,0.12)"
-          listening={false} perfectDrawEnabled={false}
-        />
-      )}
-      {el.filmLook && (
-        <Rect
-          width={el.w} height={el.h}
-          fillRadialGradientStartPoint={{ x: el.w / 2, y: el.h / 2 }}
-          fillRadialGradientEndPoint={{ x: el.w / 2, y: el.h / 2 }}
-          fillRadialGradientStartRadius={Math.min(el.w, el.h) * 0.25}
-          fillRadialGradientEndRadius={Math.max(el.w, el.h) * 0.78}
-          fillRadialGradientColorStops={[0, "rgba(0,0,0,0)", 1, "rgba(0,0,0,0.3)"]}
-          listening={false} perfectDrawEnabled={false}
-        />
-      )}
-
-      {el.stamp && (
-        <Text
-          x={4} y={el.h - 20}
-          width={el.w - 8}
-          text={el.stamp}
-          align="right"
-          fontFamily="'Share Tech Mono', monospace"
-          fontSize={11}
-          fill="#ff9b4d"
-          shadowColor="rgba(220,60,0,0.6)" shadowBlur={5}
-          listening={false}
-        />
-      )}
-
-      {el.frame === "print" && el.caption && (
-        <Text
-          x={2} y={el.h + 8}
-          width={el.w - 4}
-          text={el.caption}
-          fontFamily={FONT_BODY}
-          fontSize={12}
-          fill="#2b2622"
-          listening={false}
-        />
-      )}
-
-      {el.frame === "negative" && (
-        <>
-          <Text
-            x={ftlX + 4} y={ftlY + 4}
-            text="▸ 14A  400"
-            fontFamily="'Share Tech Mono', monospace"
-            fontSize={9}
-            fill="#ff7a00"
-            listening={false}
-          />
-          <SprocketRow x0={ftlX} y={ftlY + 11} frameWidth={fw} />
-          <SprocketRow x0={ftlX} y={el.h + pad.b - 13} frameWidth={fw} />
-        </>
-      )}
-
-      <TapeStrip cx={ftlX} cy={ftlY} baseAngle={40} seed={el.tapeSeed} si={0} />
-      <TapeStrip cx={ftrX} cy={ftrY} baseAngle={-40} seed={el.tapeSeed} si={6} />
-      <TapeStrip cx={fblX} cy={fblY} baseAngle={-40} seed={el.tapeSeed} si={12} />
-      <TapeStrip cx={fbrX} cy={fbrY} baseAngle={40} seed={el.tapeSeed} si={18} />
-    </>
+    <Shape
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx, shape) => {
+        const c = ctx._context;
+        c.save();
+        if (el.frame !== "none") {
+          c.save();
+          c.shadowColor = el.frame === "print" ? "rgba(50,30,10,0.28)" : "rgba(30,18,6,0.32)";
+          c.shadowBlur = 20;
+          c.shadowOffsetY = 12;
+          c.fillStyle = el.frame === "print" ? "#f8f4ea" : "#17120f";
+          c.fillRect(fx, fy, fw, fh);
+          c.restore();
+        }
+        if (el.frame === "negative") {
+          // Sprocket holes along the top and bottom, in paper colour.
+          c.fillStyle = "#e8dbbd";
+          for (const y of [fy + 7, fy + fh - 17]) {
+            for (let x = fx + 8 + 5; x + 9 <= fx + fw - 8; x += 21) {
+              c.beginPath();
+              if (c.roundRect) c.roundRect(x, y, 9, 10, 2);
+              else c.rect(x, y, 9, 10);
+              c.fill();
+            }
+          }
+        }
+        // The picture, with the film look laid over it (render only: the asset is untouched).
+        if (img) c.drawImage(img, 0, 0, el.w, el.h);
+        else {
+          c.fillStyle = "rgba(0,0,0,0.06)";
+          c.fillRect(0, 0, el.w, el.h);
+        }
+        if (img && el.filmLook) {
+          c.save();
+          c.beginPath();
+          c.rect(0, 0, el.w, el.h);
+          c.clip();
+          const tint = c.createLinearGradient(0, 0, 0, el.h);
+          tint.addColorStop(0, "rgba(255,170,80,0.14)");
+          tint.addColorStop(1, "rgba(120,160,150,0.10)");
+          c.fillStyle = tint;
+          c.fillRect(0, 0, el.w, el.h);
+          const r = Math.hypot(el.w, el.h) / 2;
+          const v = c.createRadialGradient(el.w / 2, el.h / 2, 0, el.w / 2, el.h / 2, r);
+          v.addColorStop(0, "rgba(45,22,6,0)");
+          v.addColorStop(0.48, "rgba(45,22,6,0)");
+          v.addColorStop(1, "rgba(45,22,6,0.5)");
+          c.fillStyle = v;
+          c.fillRect(0, 0, el.w, el.h);
+          const pattern = c.createPattern(grainTile(), "repeat");
+          if (pattern) {
+            c.globalAlpha = 0.5;
+            c.globalCompositeOperation = "overlay";
+            c.fillStyle = pattern;
+            c.fillRect(0, 0, el.w, el.h);
+          }
+          c.restore();
+        }
+        if (el.stamp) {
+          c.save();
+          c.font = "15px 'Share Tech Mono', monospace";
+          c.textAlign = "right";
+          c.textBaseline = "alphabetic";
+          c.fillStyle = "#ff9b4d";
+          c.shadowColor = "rgba(255,90,20,0.5)";
+          c.shadowBlur = 8;
+          const sx = el.w - 9;
+          const sy = el.h - 8;
+          c.fillText(el.stamp.split("").join(" "), sx, sy);
+          c.shadowColor = "rgba(255,110,30,0.95)";
+          c.shadowBlur = 3;
+          c.fillText(el.stamp.split("").join(" "), sx, sy);
+          c.restore();
+        }
+        if (caption) {
+          const lw = caption.lines[0]?.width ?? 0;
+          drawLaid(c, caption, hand?.hand ?? DEFAULT_HAND_STYLE, { colour: "#5a4636" }, (el.w - lw) / 2, el.h + 2 - 25 + 21);
+        }
+        if (el.frame === "negative") {
+          c.save();
+          c.font = "10px 'Share Tech Mono', monospace";
+          c.fillStyle = "#d98a3a";
+          c.fillText("▸ 1 4 A   4 0 0", fx + 14, fy + fh - 3.5);
+          c.restore();
+        }
+        // Four strips of tape, one across each corner, overlapping the page.
+        const s = el.tapeSeed;
+        drawTape(c, fx + 10, fy + 5, -40, s, 0, tape);
+        drawTape(c, fx + fw - 10, fy + 5, 40, s, 30, tape);
+        drawTape(c, fx + 10, fy + fh - 5, 40, s, 60, tape);
+        drawTape(c, fx + fw - 10, fy + fh - 5, -40, s, 90, tape);
+        c.restore();
+        ctx.fillStrokeShape(shape);
+      }}
+      hitFunc={(ctx, shape) => {
+        ctx.beginPath();
+        ctx.rect(fx, fy, fw, fh);
+        ctx.closePath();
+        ctx.fillStrokeShape(shape);
+      }}
+    />
   );
 }

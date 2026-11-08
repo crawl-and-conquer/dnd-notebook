@@ -1,7 +1,7 @@
 {
   "name": "dnd-notebook",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,18 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "e2e:m1": "node scripts/e2e-m1.mjs",
-    "e2e:m2": "node scripts/e2e-m2.mjs",
-    "e2e:m3": "node scripts/e2e-m3.mjs",
-    "e2e:m4": "node scripts/e2e-m4.mjs",
-    "e2e:m5": "node scripts/e2e-m5.mjs",
-    "e2e:pages": "node scripts/e2e-pages.mjs",
-    "e2e:watch": "node scripts/e2e-watch.mjs",
-    "e2e:tabs": "node scripts/e2e-tabs.mjs",
-    "e2e:move": "node scripts/e2e-move.mjs",
-    "e2e:update": "node scripts/e2e-update.mjs",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
@@ -32,7 +23,6 @@
     "@tauri-apps/plugin-opener": "^2.7.2",
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.14.1",
-    "canvas": "^3.2.3",
     "date-fns": "^4.4.0",
     "konva": "^9.3.22",
     "pdf-lib": "^1.17.1",
@@ -41,7 +31,6 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.16",
-    "tesseract.js": "^7.0.0",
     "zod": "^4.6.7",
     "zustand": "^5.0.16"
   },

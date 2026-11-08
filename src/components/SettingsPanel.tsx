@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { COVER_COLOURS } from "../model/character";
 import { backend } from "../storage/backend";
 import { notebookPathFor } from "../storage/paths";
 import { useNotebook, visibleCharacters } from "../store/notebook";
 import { CloseIcon, GripIcon } from "./Icons";
-import { CoverPicker } from "./CoverPicker";
+import { useChangeFolder } from "./ChangeFolderDialog";
+import { useNewCharacterDialog } from "./NewCharacterDialog";
+import { PaperInkSection } from "./PaperInkSettings";
 import { useDragReorder } from "./useDragReorder";
 import { AiSection } from "./AiSettings";
 import { ExportSection } from "./ExportSettings";
 import { GeneralSection } from "./GeneralSettings";
 
-type Section = "characters" | "ai" | "export" | "general";
+type Section = "characters" | "paper" | "export" | "general" | "ai";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "characters", label: "Characters and folders" },
-  { id: "ai", label: "AI" },
+  { id: "paper", label: "Paper and ink" },
   { id: "export", label: "Export" },
   { id: "general", label: "General" },
+  { id: "ai", label: "AI" },
 ];
 
 export function SettingsPanel() {
@@ -57,6 +59,7 @@ export function SettingsPanel() {
           </nav>
           <div className="settings-section">
             {section === "characters" && <CharactersSection />}
+            {section === "paper" && <PaperInkSection />}
             {section === "ai" && <AiSection />}
             {section === "export" && <ExportSection />}
             {section === "general" && <GeneralSection />}
@@ -72,7 +75,6 @@ function CharactersSection() {
   const characters = useNotebook((s) => s.characters);
   const updateConfig = useNotebook((s) => s.updateConfig);
   const moveCharacter = useNotebook((s) => s.moveCharacter);
-  const [adding, setAdding] = useState(config.characters.length === 0);
   const [error, setError] = useState<string | null>(null);
   const list = visibleCharacters(config);
   const ids = list.map((c) => c.id);
@@ -89,11 +91,11 @@ function CharactersSection() {
     <>
       <h3>Characters and folders</h3>
       <p className="lead">
-        Each character is tied to a folder. The app keeps its pages in a{" "}
-        <code>notebook</code> folder inside it.
+        Each character is tied to a folder. The app keeps its pages in a <code>notebook</code>{" "}
+        folder inside it.
       </p>
 
-      {list.length === 0 && !adding && <p className="lead">No characters yet.</p>}
+      {list.length === 0 && <p className="lead">No characters yet.</p>}
 
       <div
         className={`client-list${drag ? " reordering" : ""}`}
@@ -142,7 +144,7 @@ function CharactersSection() {
               <div className="row-actions">
                 <label
                   className="exclude-ai"
-                  title="Never send this character's notes to the AI provider"
+                  title="Never send this character's notes to the AI provider, even from Previously on..."
                 >
                   <input
                     type="checkbox"
@@ -168,6 +170,15 @@ function CharactersSection() {
                   }
                 >
                   Open folder
+                </button>
+                <button
+                  className="small-button"
+                  onClick={() => {
+                    useNotebook.getState().setSettingsOpen(false);
+                    useChangeFolder.getState().open(c.id);
+                  }}
+                >
+                  Change folder
                 </button>
                 <button
                   className="small-button"
@@ -207,114 +218,16 @@ function CharactersSection() {
         </section>
       )}
 
-      {adding ? (
-        <AddCharacterForm onDone={() => setAdding(false)} canCancel={list.length > 0} />
-      ) : (
-        <button className="pill primary" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>
-          Add character
-        </button>
-      )}
+      <button
+        className="pill primary"
+        style={{ marginTop: 12 }}
+        onClick={() => {
+          useNotebook.getState().setSettingsOpen(false);
+          useNewCharacterDialog.getState().setOpen(true);
+        }}
+      >
+        Add character
+      </button>
     </>
   );
 }
-
-function AddCharacterForm({ onDone, canCancel }: { onDone: () => void; canCancel: boolean }) {
-  const addCharacter = useNotebook((s) => s.addCharacter);
-  const [name, setName] = useState("");
-  const [cover, setCover] = useState<string>(COVER_COLOURS[0].value);
-  const [folder, setFolder] = useState<string | null>(null);
-  const [foreignPath, setForeignPath] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function choose() {
-    setError(null);
-    setForeignPath(null);
-    const f = await backend.chooseFolder("Choose the character folder");
-    if (f) setFolder(f);
-  }
-
-  async function confirm(allowForeign: boolean) {
-    if (!folder || !name.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await backend.prepareCharacterFolder(folder, name.trim(), cover, allowForeign);
-      if (r.status === "foreign") {
-        setForeignPath(r.notebookPath);
-        return;
-      }
-      await addCharacter({ name: name.trim(), cover, folder, notebookPath: r.notebookPath });
-      onDone();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form
-      className="form-card"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void confirm(false);
-      }}
-    >
-      <h3>Add character</h3>
-      <label className="field">
-        Name
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Thorin Oakenshield"
-          autoFocus
-        />
-      </label>
-      <div className="field">
-        <span id="cover-label">Cover colour</span>
-        <CoverPicker value={cover} onChange={setCover} labelledBy="cover-label" />
-      </div>
-      <div className="field">
-        Folder
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" className="small-button" onClick={() => void choose()}>
-            Choose folder
-          </button>
-          {folder && <span className="path-preview">{notebookPathFor(folder)}</span>}
-        </div>
-      </div>
-
-      {foreignPath && (
-        <div className="form-warning" role="alert">
-          {foreignPath} already exists and was not made by this app. The app will add{" "}
-          <code>character.json</code>, <code>pages</code> and <code>assets</code> to it and leave
-          your existing files alone.
-          <div className="form-actions" style={{ marginTop: 10 }}>
-            <button type="button" className="small-button" onClick={() => setForeignPath(null)}>
-              Choose another folder
-            </button>
-            <button type="button" className="small-button" onClick={() => void confirm(true)}>
-              Use this folder
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="form-error">{error}</p>}
-
-      <div className="form-actions">
-        {canCancel && (
-          <button type="button" className="pill ghost" onClick={onDone}>
-            Cancel
-          </button>
-        )}
-        <button type="submit" className="pill primary" disabled={busy || !folder || !name.trim()}>
-          Add character
-        </button>
-      </div>
-    </form>
-  );
-}
-

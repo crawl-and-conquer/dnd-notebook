@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { COVER_COLOURS } from "../model/character";
 import { useNotebook } from "../store/notebook";
 import { CoverPicker } from "./CoverPicker";
@@ -58,7 +59,7 @@ export function TabEditPopover({
   };
 
   const width = Math.min(340, window.innerWidth - 32);
-  return (
+  return createPortal(
     <form
       ref={ref}
       className="tab-edit"
@@ -67,8 +68,8 @@ export function TabEditPopover({
       onSubmit={(e) => void save(e)}
       style={{
         width,
-        right: Math.max(16, window.innerWidth - anchor.left + 10),
-        top: Math.max(16, Math.min(anchor.top, window.innerHeight - 260)),
+        left: Math.min(anchor.right + 12, window.innerWidth - width - 16),
+        top: Math.max(16, Math.min(anchor.top, window.innerHeight - 300)),
       }}
     >
       <h3>Edit character</h3>
@@ -88,6 +89,7 @@ export function TabEditPopover({
           Save
         </button>
       </div>
-    </form>
+    </form>,
+    document.body,
   );
 }

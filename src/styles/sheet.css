@@ -1,0 +1,455 @@
+/*
+ * The import dialog (mockup 06) and the character sheet pages' on-page controls (mockup 04).
+ */
+
+.import-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(900px, calc(100vw - 32px));
+  height: min(820px, calc(100vh - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line-panel);
+  border-radius: var(--radius-dialog);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 50;
+  color: var(--text);
+}
+.import-modal .mh {
+  padding: 26px 30px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.import-modal .mh h1 {
+  margin: 0;
+  font: 700 26px/1.1 var(--font-display);
+}
+.import-modal .mh p {
+  margin: 8px 0 0;
+  color: var(--text-status);
+  font-size: 15px;
+  line-height: 1.45;
+  max-width: 560px;
+}
+.import-modal .x {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border: 0;
+  border-radius: 10px;
+  background: var(--chip);
+  color: var(--text-soft);
+  display: grid;
+  place-items: center;
+}
+.import-modal .mb {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  min-height: 0;
+}
+.import-modal .mb-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 30px;
+}
+.import-modal .left {
+  padding: 22px 24px 22px 30px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+.import-modal .file {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(241, 230, 210, 0.05);
+  border: 1px solid rgba(241, 230, 210, 0.1);
+}
+.import-modal .pdf {
+  width: 42px;
+  height: 52px;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--oxblood);
+  display: grid;
+  place-items: center;
+  font: 700 11px var(--font-body);
+  letter-spacing: 0.06em;
+  flex: none;
+}
+.import-modal .fn {
+  font-weight: 700;
+  font-size: 14px;
+  word-break: break-all;
+}
+.import-modal .fs {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 3px;
+}
+.import-modal .k {
+  font: 700 11px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+.import-modal .found {
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--paper);
+  color: var(--ink-text);
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 31px,
+    rgba(201, 96, 84, 0.28) 31px,
+    rgba(201, 96, 84, 0.28) 32px
+  );
+  background-position: 0 10px;
+}
+.import-modal .found .nm {
+  font: 700 38px/42px var(--font-hand);
+}
+.import-modal .found p {
+  margin: 0;
+  font: 600 21px/32px var(--font-hand);
+  color: var(--photo-caption);
+  min-height: 32px;
+}
+.import-modal .drop {
+  border: 1.5px dashed rgba(241, 230, 210, 0.28);
+  border-radius: 14px;
+  padding: 14px;
+  text-align: center;
+  color: var(--text-status);
+  font-size: 13.5px;
+  line-height: 1.4;
+  background: transparent;
+}
+.import-modal .drop:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+.import-modal .drop.big {
+  width: min(520px, 100%);
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+}
+.import-modal .drop.big small {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.import-modal .done-msg {
+  font-size: 16px;
+  color: var(--ok);
+  text-align: center;
+  max-width: 560px;
+  line-height: 1.5;
+}
+.import-modal .unread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.import-modal .unread label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.import-modal .unread input {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--chrome);
+  color: var(--text);
+}
+.import-modal .right {
+  padding: 20px 30px 18px 26px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.import-modal .row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 52px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(241, 230, 210, 0.035);
+}
+.import-modal .row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--gilt);
+  margin: 0;
+}
+.import-modal .row label {
+  display: block;
+  cursor: pointer;
+  min-width: 0;
+}
+.import-modal .what {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.import-modal .quote {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  margin-top: 2px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-modal .dest {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--ink-title);
+  font: 700 12.5px var(--font-body);
+  white-space: nowrap;
+}
+.import-modal .overrides {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.import-modal .ov {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 2px 10px;
+  font-size: 13.5px;
+  color: var(--text-soft);
+}
+.import-modal .ov input {
+  accent-color: var(--gilt);
+  grid-row: span 2;
+}
+.import-modal .ov-vals {
+  color: var(--text-muted);
+}
+.import-modal .opts {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.import-modal .opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-soft);
+  font-size: 14.5px;
+  flex-wrap: wrap;
+}
+.import-modal label.opt {
+  cursor: pointer;
+  position: relative;
+}
+.import-modal label.opt input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.import-modal .switch {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--chip-active);
+  position: relative;
+  flex: none;
+}
+.import-modal .switch::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.import-modal input:checked + .switch {
+  background: var(--gilt);
+}
+.import-modal input:checked + .switch::after {
+  left: auto;
+  right: 3px;
+  background: var(--chrome);
+}
+.import-modal input:focus-visible + .switch {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+.import-modal .opt-note {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.import-modal .seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(241, 230, 210, 0.07);
+  gap: 2px;
+  margin-left: auto;
+}
+.import-modal .seg button {
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 0 12px;
+  font: 600 13px var(--font-body);
+}
+.import-modal .seg button.on {
+  background: var(--gilt);
+  color: var(--chrome);
+}
+.import-modal .mf {
+  padding: 16px 30px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.import-modal .mf .note {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  margin-right: auto;
+  line-height: 1.4;
+}
+.import-modal .btn {
+  height: 44px;
+  border-radius: 11px;
+  border: 0;
+  padding: 0 20px;
+  font: 700 15px var(--font-body);
+  white-space: nowrap;
+}
+.import-modal .btn.ghost {
+  background: rgba(241, 230, 210, 0.07);
+  color: var(--text-soft);
+}
+.import-modal .btn.go {
+  background: var(--gilt);
+  color: var(--chrome);
+}
+
+@media (max-width: 760px) {
+  .import-modal .mb {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .import-modal .left {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* ---------- Character sheet pages ---------- */
+
+.sheet-controls {
+  position: absolute;
+  top: 18px;
+  right: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 3;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 420px;
+}
+.synced-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  border: 1.5px solid rgba(79, 107, 50, 0.5);
+  color: #3f5627;
+  font: 600 12px var(--font-body);
+  background: rgba(79, 107, 50, 0.07);
+  white-space: nowrap;
+}
+.synced-pill svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sheet-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  border: 1.5px solid var(--pill-line);
+  background: var(--pill-wash);
+  color: var(--oxblood-ink);
+  font: 600 12px var(--font-body);
+  white-space: nowrap;
+}
+.sheet-btn:hover {
+  background: rgba(142, 42, 42, 0.14);
+}
+.sheet-btn.primary {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  font-size: 13px;
+}
+.sheet-hint {
+  font: 500 12px var(--font-body);
+  color: var(--muted-on-paper);
+}
+.sheet-value-editor {
+  position: absolute;
+  z-index: 5;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 4px;
+  background: rgba(255, 250, 236, 0.95);
+  outline: 1.5px dashed var(--gilt);
+  font-family: var(--font-hand);
+  font-weight: 700;
+  color: var(--ink-text);
+}

@@ -8,11 +8,30 @@ export const snapIf = (v: number, grid: number, on: boolean): number => (on ? sn
 export const snapPoint = (p: Point, grid: number, on: boolean): Point =>
   on ? { x: snap(p.x, grid), y: snap(p.y, grid) } : p;
 
-/** Lock-to-lines snap: x to 16 px columns, y to 32 px rows (the ruled lines). */
+/** Lock to lines: 16 px columns and 32 px rows, lined up with the rules (first rule at y 95). */
 export const LINES_X = 16;
 export const LINES_Y = 32;
+/** Where the rules fall within each 32 px row: y = 31, 63, 95, 127, ... */
+export const RULE_PHASE = 95 % LINES_Y;
+/** A line of handwriting starts this far above the rule it sits on (32 px line, baseline on the rule). */
+export const TEXT_ABOVE_RULE = 27;
+/** Writing starts right of the margin line, at x 92. */
+export const WRITING_X = 92;
+
+const snapPhase = (v: number, grid: number, phase: number) => Math.round((v - phase) / grid) * grid + phase;
+
+/** Shape corners and line ends: onto the nearest rule vertically, a 16 px column across. */
 export const snapToLines = (p: Point, on: boolean): Point =>
-  on ? { x: snap(p.x, LINES_X), y: snap(p.y, LINES_Y) } : p;
+  on ? { x: snap(p.x, LINES_X), y: snapPhase(p.y, LINES_Y, RULE_PHASE) } : p;
+
+/** Text and checklists: the top of the text box so its first baseline sits on a rule. */
+export const snapTextTop = (p: Point, on: boolean): Point =>
+  on
+    ? {
+        x: snapPhase(p.x, LINES_X, WRITING_X % LINES_X),
+        y: snapPhase(p.y, LINES_Y, (RULE_PHASE - TEXT_ABOVE_RULE + LINES_Y) % LINES_Y),
+      }
+    : p;
 
 const TAN_22_5 = Math.tan(Math.PI / 8);
 

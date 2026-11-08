@@ -58,7 +58,7 @@ export function imageBox(): { x: number; y: number; w: number; h: number } {
   const [W, H] = A4_LANDSCAPE;
   const maxW = W - MARGIN * 2;
   const maxH = H - HEADER_H - FOOTER_H - MARGIN;
-  const ratio = PAGE_WIDTH / PAGE_HEIGHT;
+  const ratio = (PAGE_WIDTH * 2) / PAGE_HEIGHT;
   const w = Math.min(maxW, maxH * ratio);
   const h = w / ratio;
   return { x: (W - w) / 2, y: FOOTER_H + (maxH - h) / 2 + MARGIN / 2, w, h };
@@ -82,14 +82,14 @@ function footer(page: PDFPage, fonts: Fonts, colours: PdfColours, n: number, tot
   });
 }
 
-export type NotebookPageMeta = { tabName: string; pageTitle: string; created: string };
+export type SpreadMeta = { character: string; section: string; title: string; date: string };
 
-/** One notebook page: slim header (tab, title, created date), the page image, page number. */
-export async function addNotebookPage(
+/** One spread per landscape A4 page: slim header (character, section, title, date), the spread, page number. */
+export async function addSpreadPage(
   doc: PDFDocument,
   fonts: Fonts,
   png: Uint8Array,
-  meta: NotebookPageMeta,
+  meta: SpreadMeta,
   colours: PdfColours,
   n: number,
   total: number,
@@ -98,9 +98,9 @@ export async function addNotebookPage(
   const page = doc.addPage(A4_LANDSCAPE);
   background(page, colours);
   const y = H - MARGIN + 2 - SMALL;
-  const right = `Started ${meta.created}`;
+  const right = meta.date;
   const rightW = fonts.regular.widthOfTextAtSize(safeText(fonts.regular, right), SMALL);
-  const tab = fitWidth(fonts.bold, meta.tabName, SMALL, 220);
+  const tab = fitWidth(fonts.bold, `${meta.character} · ${meta.section}`, SMALL, 260);
   const tabW = fonts.bold.widthOfTextAtSize(tab, SMALL);
   page.drawText(tab, {
     x: MARGIN,
@@ -111,7 +111,7 @@ export async function addNotebookPage(
   });
   const title = fitWidth(
     fonts.regular,
-    `  ·  ${meta.pageTitle || "Untitled page"}`,
+    `  ·  ${meta.title || "Untitled page"}`,
     SMALL,
     W - MARGIN * 2 - tabW - rightW - 20,
   );

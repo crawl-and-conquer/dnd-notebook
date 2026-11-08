@@ -1,13 +1,14 @@
 import { getStroke } from "perfect-freehand";
-import { newId, type ChecklistItem, type Element } from "../model/page";
+import { PAGE_WIDTH, newId, type ChecklistItem, type Element } from "../model/page";
 import { snap } from "./geometry";
 
 type ElementOf<T extends Element["type"]> = Extract<Element, { type: T }>;
 
+/** Handwriting sits one line per 32 px rule; the writing area runs from x 92 to 36 px from the edge. */
 export const TEXT_STYLE = {
-  note: { fontSize: 17, w: 360 },
-  heading: { fontSize: 28, w: 600 },
-  checklist: { fontSize: 16, w: 360 },
+  note: { fontSize: 26, w: 442 },
+  heading: { fontSize: 30, w: 442 },
+  checklist: { fontSize: 26, w: 442 },
 } as const;
 
 export const BRUSH_OPACITY = 0.4;
@@ -45,7 +46,8 @@ export function makeStroke(
     points,
     colour,
     width: tool === "brush" ? width * BRUSH_WIDTH_FACTOR : width,
-    opacity: tool === "brush" ? BRUSH_OPACITY : 1,
+    // Highlighter colours carry their own transparency; a plain ink used as a brush is thinned.
+    opacity: tool === "brush" && !/^rgba|^hsla|^#[0-9a-f]{8}$/i.test(colour) ? BRUSH_OPACITY : 1,
     ...stamp(),
   };
 }
@@ -94,12 +96,19 @@ export function makeShape(
   return type === "rect" ? { ...base, type: "rect" } : { ...base, type: "ellipse" };
 }
 
+/** Right edge of the writing area, matching the page header's right padding. */
+export const WRITING_RIGHT = PAGE_WIDTH - 36;
+
+/** A new text box keeps to the page: as wide as its style, but never past the right edge. */
+export const fitWidth = (x: number, w: number) => Math.max(80, Math.min(w, WRITING_RIGHT - x));
+
 export function makeText(
   x: number,
   y: number,
   colour: string,
   heading: boolean,
   text = "",
+  font: "hand" | "print" = "hand",
 ): ElementOf<"text"> {
   const s = heading ? TEXT_STYLE.heading : TEXT_STYLE.note;
   return {
@@ -109,10 +118,12 @@ export function makeText(
     y,
     rotation: 0,
     text,
-    w: s.w,
+    w: fitWidth(x, s.w),
     fontSize: s.fontSize,
     colour,
     heading,
+    font,
+    sticky: false,
     ...stamp(),
   };
 }
@@ -121,6 +132,7 @@ export function makeChecklist(
   x: number,
   y: number,
   texts: string[] = [""],
+  colour = "#2b2622",
 ): ElementOf<"checklist"> {
   return {
     id: newId(),
@@ -128,8 +140,10 @@ export function makeChecklist(
     x,
     y,
     rotation: 0,
-    w: TEXT_STYLE.checklist.w,
+    w: fitWidth(x, TEXT_STYLE.checklist.w),
     items: texts.map((text) => ({ id: newId(), text, done: false })),
+    colour,
+    font: "hand",
     ...stamp(),
   };
 }
@@ -247,7 +261,6 @@ export function restyle(el: Element, style: { colour?: string; width?: number })
     case "image":
       return el;
     case "checklist":
-      return el;
     case "text":
       return style.colour ? { ...el, colour: style.colour, updatedAt } : el;
     case "stroke": {

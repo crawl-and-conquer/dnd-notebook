@@ -1,4 +1,4 @@
-//! Watches each client's `notes/pages` folder and tells the front end which page files
+//! Watches each character's `notebook/pages` folder and tells the front end which page files
 //! changed (SPEC: Saving rules). The front end decides whether a change came from the app
 //! itself, and whether to reload the page or keep unsaved edits.
 
@@ -38,22 +38,22 @@ struct NotesChanged {
     rescan: bool,
 }
 
-/// File names of `*.page.json` files in any direct subfolder of a `pages` folder,
-/// sorted and de-duplicated. Temp files, `.bak` files and anything else are ignored.
+/// `<sectionId>/<file>.page.json` for every page file directly inside a section folder under
+/// `pages`, sorted and de-duplicated. Temp files, `.bak` files and anything else are ignored.
 pub fn page_file_names(paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
     let set: BTreeSet<String> = paths
         .into_iter()
-        .filter(|p| {
-            // Expected: <notebook>/pages/<sectionId>/<file>.page.json
-            // Parent is a section dir; grandparent must be named "pages".
-            let parent_name = p.parent().and_then(Path::file_name);
-            let grandparent_name =
-                p.parent().and_then(Path::parent).and_then(Path::file_name);
-            parent_name.map(|n| n != "pages").unwrap_or(false)
-                && grandparent_name.map(|n| n == "pages").unwrap_or(false)
+        .filter_map(|p| {
+            let file = p.file_name()?.to_str()?.to_string();
+            let section_dir = p.parent()?;
+            let section = section_dir.file_name()?.to_str()?.to_string();
+            let pages = section_dir.parent()?.file_name()?;
+            let ok = pages == "pages"
+                && section != "pages"
+                && file.ends_with(".page.json")
+                && !file.starts_with('.');
+            ok.then(|| format!("{section}/{file}"))
         })
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(str::to_string))
-        .filter(|n| n.ends_with(".page.json") && !n.starts_with('.'))
         .collect();
     set.into_iter().collect()
 }
@@ -120,7 +120,7 @@ mod tests {
             base.join("pages").join("sessions"),
             base.join("pages").join("sessions").join("extra").join("deep.page.json"),
         ]);
-        assert_eq!(names, vec!["2026-11-06-a.page.json", "2026-11-06-b.page.json"]);
+        assert_eq!(names, vec!["sessions/2026-11-06-a.page.json", "sessions/2026-11-06-b.page.json"]);
     }
 
     #[test]
@@ -140,6 +140,6 @@ mod tests {
         d.watcher().watch(pages, RecursiveMode::Recursive).unwrap();
         std::fs::write(section.join("2026-11-06-x.page.json"), "{}").unwrap();
         let got = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(got, vec!["2026-11-06-x.page.json"]);
+        assert_eq!(got, vec!["sessions/2026-11-06-x.page.json"]);
     }
 }

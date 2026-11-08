@@ -200,3 +200,11 @@ describe("duplicate, restyle, checklist edits", () => {
     expect(out[2]).toMatchObject({ text: "c", done: false });
   });
 });
+
+describe("new text boxes keep to the page", () => {
+  it("narrows a note started away from the margin", () => {
+    expect(makeText(92, 100, "#000", false).w).toBe(442);
+    expect(makeText(200, 100, "#000", false).w).toBe(570 - 36 - 200);
+    expect(makeText(520, 100, "#000", false).w).toBe(80);
+  });
+});

@@ -51,6 +51,12 @@ export interface Backend {
   moveNotebook(fromNotebook: string, toFolder: string): Promise<MoveNotebookResult>;
   /** Keeps the name and cover colour in `character.json` in step with app config. */
   updateCharacterMeta(notebookPath: string, name: string, cover: string): Promise<void>;
+  /** Creates `hand`, `imports`, `assets` or `pages/<sectionId>` inside the notebook. */
+  ensureNotebookDir(notebookPath: string, rel: string): Promise<void>;
+  /** Moves a removed section's folder to the Recycle Bin. */
+  trashSectionFolder(notebookPath: string, sectionId: string): Promise<void>;
+  /** Keeps a copy of an imported PDF in `imports/`; returns its notebook-relative path. */
+  saveImportCopy(notebookPath: string, fileName: string, pdfBase64: string): Promise<string>;
   /** Starts watching each `<notebook>/pages/<sectionId>`; changes arrive as `notes-changed` events. */
   watchNotebookFolder(notebookPath: string): Promise<void>;
   unwatchNotebookFolder(notebookPath: string): Promise<void>;
@@ -90,6 +96,11 @@ const tauriBackend: Backend = {
     invoke<MoveNotebookResult>("move_notebook", { fromNotebook, toFolder }),
   updateCharacterMeta: (notebookPath, name, cover) =>
     invoke("update_character_meta", { notebookPath, name, cover }),
+  ensureNotebookDir: (notebookPath, rel) => invoke("ensure_notebook_dir", { notebookPath, rel }),
+  trashSectionFolder: (notebookPath, sectionId) =>
+    invoke("trash_section_folder", { notebookPath, sectionId }),
+  saveImportCopy: (notebookPath, fileName, dataBase64) =>
+    invoke<string>("save_import_copy", { notebookPath, fileName, dataBase64 }),
   watchNotebookFolder: (notebookPath) => invoke("watch_notebook_folder", { notebookPath }),
   unwatchNotebookFolder: (notebookPath) => invoke("unwatch_notebook_folder", { notebookPath }),
   saveAsset: (notebookPath, dataBase64) => invoke<string>("save_asset", { notebookPath, dataBase64 }),
@@ -141,6 +152,8 @@ function createMemoryBackend(): Backend {
       dirs.add(notebookPath);
       dirs.add(`${notebookPath}/pages`);
       dirs.add(`${notebookPath}/assets`);
+      for (const s of ["sessions", "backstory", "likes", "dislikes", "wants", "notes", "sheet"])
+        dirs.add(`${notebookPath}/pages/${s}`);
       return { status, notebookPath };
     },
     listSectionPageFiles: async (notebookPath, sectionId) => {
@@ -174,6 +187,18 @@ function createMemoryBackend(): Backend {
     },
     openInExplorer: async () => undefined,
     updateCharacterMeta: async () => undefined,
+    ensureNotebookDir: async (notebookPath, rel) => {
+      dirs.add(`${notebookPath}/${rel}`);
+    },
+    trashSectionFolder: async (notebookPath, sectionId) => {
+      const prefix = `${notebookPath}/pages/${sectionId}/`;
+      for (const k of [...files.keys()]) if (k.startsWith(prefix)) files.delete(k);
+      dirs.delete(`${notebookPath}/pages/${sectionId}`);
+    },
+    saveImportCopy: async (notebookPath, fileName, b64) => {
+      files.set(`${notebookPath}/imports/${fileName}`, `(pdf, ${Math.round((b64.length * 3) / 4)} bytes)`);
+      return `imports/${fileName}`;
+    },
     // Browser preview: moves the in-memory files (there is no Recycle Bin to use).
     moveNotebook: async (fromNotebook, toFolder) => {
       const toNotebook = `${toFolder}/notebook`;
