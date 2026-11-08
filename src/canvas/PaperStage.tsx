@@ -1,5 +1,4 @@
 import Konva from "konva";
-import { format } from "date-fns";
 import {
   useCallback,
   useEffect,
@@ -12,7 +11,7 @@ import {
 import { Group, Layer, Rect, Stage, Transformer } from "react-konva";
 import { PAGE_HEIGHT, PAGE_WIDTH, type Element, type Page } from "../model/page";
 import { useNotebook } from "../store/notebook";
-import { MAX_ZOOM, MIN_ZOOM, useTools } from "../store/tools";
+import { useTools } from "../store/tools";
 import { importImage, placedSize } from "./assets";
 import { ElementNode, clearMeasureCache, token } from "./ElementNode";
 import {
@@ -27,20 +26,19 @@ import {
   makeText,
   translate,
 } from "./elements";
-import { LINES_Y, boxFromCorners, lockAngle, snap, snapToLines, squareCorner, type Point } from "./geometry";
+import { LINES_Y, boxFromCorners, lockAngle, snapTextTop, snapToLines, squareCorner, type Point } from "./geometry";
 import { TextEditor } from "./TextEditor";
-import { PaperBackground, TITLE_X, TITLE_Y, drawOrder } from "./PageScene";
+import { PaperBackground, drawOrder } from "./PageScene";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { PhotoMenu } from "../components/PhotoMenu";
 import { useExportDialog } from "../components/ExportDialog";
-import { ToolOptions } from "./ToolOptions";
 
-const PAN_MARGIN = 200;
 const ERASER_RADIUS = 6;
 
 // Very high-density screens (3x) make every layer a huge canvas; 2x is still sharp
 // and keeps pan and zoom smooth.
-Konva.pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+const MAX_PIXEL_RATIO = 2;
+Konva.pixelRatio = Math.min(MAX_PIXEL_RATIO, window.devicePixelRatio || 1);
 
 type Draft =
   | { kind: "stroke"; tool: "pen" | "brush"; pts: number[] }
@@ -54,35 +52,35 @@ type Props = {
   page: Page;
   readOnly: boolean;
   notebookPath: string;
-  onTitleChange(title: string): void;
+  /** The page tools, keys and paste act on. Only one page of a spread is active. */
+  active: boolean;
+  /** Called on pointer down, before the gesture, so edits go to this page. */
   onActivate?(): void;
+  /** Sheet pages draw their own template instead of ruled paper. */
+  paper?: boolean;
 };
 
 const isTyping = (t: EventTarget | null) =>
   t instanceof HTMLElement &&
   (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
-export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActivate }: Props) {
-  const wrapRef = useRef<HTMLDivElement>(null);
+/**
+ * One page of the spread: a Konva stage the exact size of the page (570 x 720). Zoom and
+ * pan belong to the spread (BookView), which scales the whole book with a CSS transform.
+ */
+export function PaperStage({ page, readOnly, notebookPath, active, onActivate, paper = true }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [size, setSize] = useState({ w: 800, h: 600 });
-  // Pan and zoom live in a ref and are applied to the Konva stage directly (and to
-  // the HTML overlays through CSS variables), so moving the view never re-renders React.
-  const view = useRef({ x: 0, y: 0, zoom: useTools.getState().zoom });
-  const [panning, setPanning] = useState<{ x: number; y: number; px: number; py: number } | null>(
-    null,
-  );
-  const [spaceDown, setSpaceDown] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [, setFontTick] = useState(0);
 
-  const setZoom = useTools((s) => s.setZoom);
   const tool = useTools((s) => s.tool);
+  const zoom = useTools((s) => s.zoom);
+  const panMode = useTools((s) => s.panMode);
   const setTool = useTools((s) => s.setTool);
   const selectedIds = useTools((s) => s.selectedIds);
   const setSelected = useTools((s) => s.setSelected);
@@ -104,101 +102,39 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
 
   const colours = useMemo(
     () => ({
-      paper: token("--paper"),
-      mint: token("--gilt"),
+      gilt: token("--gilt"),
       desk: token("--desk"),
     }),
     [],
   );
 
-  // ---------- view: size, pan, zoom ----------
-
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
-
-  /** Keeps the sheet reachable: at least PAN_MARGIN of it stays in view. */
-  const clamp = useCallback((p: Point, z: number) => {
-    const s = sizeRef.current;
-    const minX = Math.min(0, s.w - PAGE_WIDTH * z - PAN_MARGIN);
-    const minY = Math.min(0, s.h - PAGE_HEIGHT * z - PAN_MARGIN);
-    return {
-      x: Math.min(PAN_MARGIN, Math.max(minX, p.x)),
-      y: Math.min(PAN_MARGIN, Math.max(minY, p.y)),
-    };
-  }, []);
-
-  // While a wheel zoom is in progress the page is drawn from a cached bitmap
-  // (one image instead of every vector), then redrawn sharp once the wheel stops.
-  const contentRef = useRef<Konva.Group>(null);
-  const zoomSettle = useRef<number | undefined>(undefined);
-  const cacheDuringZoom = useCallback(() => {
-    const g = contentRef.current;
-    if (!g) return;
-    if (!g.isCached())
-      g.cache({
-        x: 0,
-        y: 0,
-        width: PAGE_WIDTH,
-        height: PAGE_HEIGHT,
-        pixelRatio: 2,
-        imageSmoothingEnabled: true,
-      });
-    window.clearTimeout(zoomSettle.current);
-    zoomSettle.current = window.setTimeout(() => {
-      g.clearCache();
-      g.getLayer()?.batchDraw();
-    }, 160);
-  }, []);
-
-  const applyView = useCallback(
-    (x: number, y: number, zoomIn: number) => {
-      const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomIn));
-      const c = clamp({ x, y }, z);
-      view.current = { x: c.x, y: c.y, zoom: z };
-      const st = stageRef.current;
-      if (st) {
-        st.position(c);
-        st.scale({ x: z, y: z });
-        st.batchDraw();
+  // The book is scaled with CSS while zooming (smooth, no redraw); once the zoom settles the
+  // canvases are redrawn at a resolution that suits the new size, capped at 2x.
+  useEffect(() => {
+    const st = stageRef.current;
+    if (!st) return;
+    const ratio = Math.min(MAX_PIXEL_RATIO, (window.devicePixelRatio || 1) * Math.max(1, zoom));
+    for (const layer of st.getLayers()) {
+      if (layer.getCanvas().getPixelRatio() !== ratio) {
+        layer.getCanvas().setPixelRatio(ratio);
+        layer.batchDraw();
       }
-      const w = wrapRef.current;
-      if (w) {
-        w.style.setProperty("--pan-x", `${c.x}px`);
-        w.style.setProperty("--pan-y", `${c.y}px`);
-        w.style.setProperty("--zoom", String(z));
-      }
-      if (useTools.getState().zoom !== z) setZoom(z); // status bar only
-    },
-    [clamp, setZoom],
-  );
+    }
+  }, [zoom]);
 
   useLayoutEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    // Measure now, so anything that centres the view on mount uses the real size.
-    const r = el.getBoundingClientRect();
-    sizeRef.current = { w: r.width, h: r.height };
-    setSize(sizeRef.current);
-    const ro = new ResizeObserver(([entry]) =>
-      setSize({ w: entry.contentRect.width, h: entry.contentRect.height }),
-    );
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Re-clamp when the window resizes.
-  useLayoutEffect(() => {
-    const v = view.current;
-    applyView(v.x, v.y, v.zoom);
-  }, [size, applyView]);
-
-  useLayoutEffect(() => {
-    applyView(0, 0, view.current.zoom);
-    setSelected([]);
+    if (active) setSelected([]);
     setEditing(null);
     setDraft(null);
     setMenu(null);
-  }, [page.id, setSelected, applyView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.id]);
+
+  // Leaving a page (clicking the other one) drops its selection and open editor.
+  useEffect(() => {
+    if (active) return;
+    setMenu(null);
+  }, [active]);
 
   useEffect(() => {
     void document.fonts.ready.then(() => {
@@ -216,60 +152,18 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     return layer.getRelativePointerPosition();
   }, []);
 
-  const viewCentre = (): Point => {
-    const v = view.current;
-    return { x: (size.w / 2 - v.x) / v.zoom, y: (size.h / 2 - v.y) / v.zoom };
-  };
-
-  const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
-    e.evt.preventDefault();
-    const stage = stageRef.current;
-    if (!stage) return;
-    const v = view.current;
-    if (e.evt.ctrlKey) {
-      const pointer = stage.getPointerPosition() ?? { x: size.w / 2, y: size.h / 2 };
-      const next = Math.min(
-        MAX_ZOOM,
-        Math.max(MIN_ZOOM, v.zoom * Math.exp(-e.evt.deltaY * 0.0015)),
-      );
-      const world = { x: (pointer.x - v.x) / v.zoom, y: (pointer.y - v.y) / v.zoom };
-      cacheDuringZoom();
-      applyView(pointer.x - world.x * next, pointer.y - world.y * next, next);
-    } else {
-      const dx = e.evt.shiftKey ? e.evt.deltaY : e.evt.deltaX;
-      const dy = e.evt.shiftKey ? 0 : e.evt.deltaY;
-      applyView(v.x - dx, v.y - dy, v.zoom);
-    }
-  };
-
-  useEffect(() => {
-    if (!panning) return;
-    const move = (e: PointerEvent) =>
-      applyView(
-        panning.px + e.clientX - panning.x,
-        panning.py + e.clientY - panning.y,
-        view.current.zoom,
-      );
-    const up = () => setPanning(null);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [panning, applyView]);
+  const viewCentre = (): Point => ({ x: PAGE_WIDTH / 2, y: PAGE_HEIGHT / 2 });
 
   // ---------- element callbacks (stable, so memoised nodes don't re-render) ----------
 
+  // Lock to lines: shapes snap onto the rules, text so its baseline sits on a rule; Alt frees both.
   const dragBound = useCallback((abs: Konva.Vector2d) => {
-    const st = stageRef.current;
     const { lock, alt } = live.current;
-    if (!st || !lock || alt) return abs;
-    const z = st.scaleX();
-    return {
-      x: snap((abs.x - st.x()) / z, LINES_Y / 2) * z + st.x(),
-      y: snap((abs.y - st.y()) / z, LINES_Y) * z + st.y(),
-    };
+    return snapToLines(abs, lock && !alt);
+  }, []);
+  const textDragBound = useCallback((abs: Konva.Vector2d) => {
+    const { lock, alt } = live.current;
+    return snapTextTop(abs, lock && !alt);
   }, []);
 
   const dragCommitQueued = useRef(false);
@@ -462,7 +356,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     const toAbs = layer.getAbsoluteTransform();
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 4));
-    const r = ERASER_RADIUS / view.current.zoom;
+    const r = ERASER_RADIUS / Math.max(0.5, useTools.getState().zoom);
     let changed = false;
     for (let s = 0; s <= steps; s++) {
       const p = {
@@ -613,12 +507,9 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
 
   const onPointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     const evt = e.evt;
+    // Middle-drag and Space-drag pan the spread; BookView handles those.
+    if (evt.button === 1 || useTools.getState().panMode) return;
     onActivate?.();
-    if (evt.button === 1 || (evt.button === 0 && spaceDown)) {
-      evt.preventDefault();
-      setPanning({ x: evt.clientX, y: evt.clientY, px: view.current.x, py: view.current.y });
-      return;
-    }
     if (evt.button !== 0 || readOnly || editing) return;
     const p = toPage();
     if (!p) return;
@@ -670,10 +561,12 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
       case "text": {
         evt.preventDefault(); // keep focus in the editor that is about to open
         const kind = useTools.getState().textKind;
+        // The line clicked on is the one written on: its baseline is the rule below the pointer.
+        const at = snapTextTop({ x: p.x, y: p.y - LINES_Y / 2 }, snapOn(evt.altKey));
         const el =
           kind === "checklist"
-            ? makeChecklist(snapped.x, snapped.y, [""])
-            : makeText(snapped.x, snapped.y, general.inkColour, kind === "heading");
+            ? makeChecklist(at.x, at.y, [""], general.inkColour)
+            : makeText(at.x, at.y, general.inkColour, kind === "heading");
         setEditing({ el, isNew: true });
         return;
       }
@@ -744,12 +637,13 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
   );
 
   useEffect(() => {
-    if (tool !== "image") return;
+    if (tool !== "image" || !active) return;
     if (!readOnly) fileRef.current?.click();
     setTool(useTools.getState().previousTool);
-  }, [tool, readOnly, setTool]);
+  }, [tool, readOnly, setTool, active]);
 
   useEffect(() => {
+    if (!active) return;
     const onPaste = (e: ClipboardEvent) => {
       if (readOnly || isTyping(e.target) || useNotebook.getState().settingsOpen || !e.clipboardData)
         return;
@@ -765,7 +659,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
       const text = e.clipboardData.getData("text/plain");
       if (text.trim()) {
         e.preventDefault();
-        const p = snapToLines(at, general.lockToLines);
+        const p = snapTextTop(at, general.lockToLines);
         const el = makeText(
           p.x,
           p.y,
@@ -794,28 +688,20 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
   // ---------- keyboard ----------
 
   useEffect(() => {
+    if (!active) return;
     const down = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
         live.current.alt = true;
         e.preventDefault();
       }
-      if (e.ctrlKey && e.key === "0") {
-        e.preventDefault();
-        applyView(0, 0, 1);
-        return;
-      }
       if (
         isTyping(e.target) ||
         useNotebook.getState().settingsOpen ||
         useNotebook.getState().pageListOpen ||
+        useNotebook.getState().handwritingOpen ||
         useExportDialog.getState().open
       )
         return;
-      if (e.code === "Space") {
-        e.preventDefault();
-        setSpaceDown(true);
-        return;
-      }
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const store = useNotebook.getState();
@@ -859,7 +745,6 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "Alt") live.current.alt = false;
-      if (e.code === "Space") setSpaceDown(false);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -867,7 +752,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [applyView, setTool, setSelected, readOnly]);
+  }, [setTool, setSelected, readOnly, active]);
 
   // ---------- render ----------
 
@@ -913,7 +798,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
           notebookPath={notebookPath}
           draggable={draggable}
           hidden={editingId === el.id}
-          dragBoundFunc={dragBound}
+          dragBoundFunc={el.type === "text" || el.type === "checklist" ? textDragBound : dragBound}
           onDragEnd={onDragEnd}
           onDblClick={onDblClick}
           onToggleItem={readOnly ? undefined : onToggleItem}
@@ -925,6 +810,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
       draggable,
       editingId,
       dragBound,
+      textDragBound,
       onDragEnd,
       onDblClick,
       onToggleItem,
@@ -933,24 +819,18 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
   );
 
   const interactive = tool === "select" || tool === "eraser";
-  const cursor = panning
-    ? "grabbing"
-    : spaceDown
-      ? "grab"
-      : tool === "select"
-        ? "default"
-        : tool === "text"
-          ? "text"
-          : "crosshair";
-  const started = format(new Date(page.createdAt), "EEE d MMM yyyy");
+  const cursor = panMode
+    ? "grab"
+    : tool === "select"
+      ? "default"
+      : tool === "text"
+        ? "text"
+        : "crosshair";
 
   return (
     <div
-      ref={wrapRef}
-      className="paper-viewport"
+      className="paper-surface"
       style={{ cursor }}
-      // The view pans through the stage, never by native scrolling (focusing an
-      // overlay input can otherwise scroll this overflow-hidden box).
       onScroll={(e) => {
         e.currentTarget.scrollTop = 0;
         e.currentTarget.scrollLeft = 0;
@@ -965,17 +845,16 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
     >
       <Stage
         ref={stageRef}
-        width={size.w}
-        height={size.h}
-        onWheel={onWheel}
+        width={PAGE_WIDTH}
+        height={PAGE_HEIGHT}
         onPointerDown={onPointerDown}
         onPointerMove={onStageMove}
         onContextMenu={onContextMenu}
       >
         {/* Two layers only: each layer is a full-size canvas the browser composites every frame. */}
         <Layer ref={layerRef} listening={interactive}>
-          <Group ref={contentRef}>
-            {!page.sheetPageType && <PaperBackground />}
+          <Group>
+            {paper && <PaperBackground />}
             {elementNodes}
           </Group>
         </Layer>
@@ -997,10 +876,10 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
                 const b = boxFromCorners(draft.start, draft.end);
                 return { x: b.x, y: b.y, width: b.w, height: b.h };
               })()}
-              stroke={colours.mint}
-              strokeWidth={1 / view.current.zoom}
-              dash={[6 / view.current.zoom, 4 / view.current.zoom]}
-              fill="rgba(1,198,163,0.08)"
+              stroke={colours.gilt}
+              strokeWidth={1}
+              dash={[6, 4]}
+              fill="rgba(212,168,90,0.10)"
               listening={false}
             />
           )}
@@ -1028,10 +907,10 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
             }
             anchorSize={10}
             anchorCornerRadius={2}
-            anchorStroke={colours.mint}
+            anchorStroke={colours.gilt}
             anchorFill={colours.desk}
             anchorStrokeWidth={1.5}
-            borderStroke={colours.mint}
+            borderStroke={colours.gilt}
             borderDash={[6, 4]}
             padding={6}
             boundBoxFunc={(oldBox, newBox) =>
@@ -1044,28 +923,7 @@ export function PaperStage({ page, readOnly, notebookPath, onTitleChange, onActi
       </Stage>
 
       <div className="paper-overlay">
-        <div
-          className="page-title"
-          style={{
-            left: `calc(var(--pan-x) + ${TITLE_X}px * var(--zoom))`,
-            top: `calc(var(--pan-y) + ${TITLE_Y}px * var(--zoom))`,
-            transform: "scale(var(--zoom))",
-          }}
-        >
-          <label className="visually-hidden" htmlFor="page-title-input">
-            Page title
-          </label>
-          <input
-            id="page-title-input"
-            value={page.title}
-            readOnly={readOnly}
-            onChange={(e) => onTitleChange(e.target.value)}
-            spellCheck
-          />
-          <p>Page started {started}</p>
-        </div>
         {editing && <TextEditor key={editing.el.id} el={editing.el} onCommit={commitEditing} />}
-        <ToolOptions />
         {menu && (
           <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />
         )}

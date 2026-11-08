@@ -7,24 +7,25 @@ import {
 } from "../model/config";
 import {
   createPage,
+  fileNumber,
   newId,
+  nextFileNumber,
   pageFileName,
   parsePage,
+  serialisePage,
+  slugify,
   uniquePageFileName,
   type Element,
   type Page,
 } from "../model/page";
 import {
-  createCharacter,
-  parseCharacter,
+  newSectionId,
+  readCharacter,
+  serialiseCharacter,
   type Character,
+  type Section,
 } from "../model/character";
-import {
-  emptyGlyphs,
-  parseGlyphs,
-  serialiseGlyphs,
-  type GlyphsData,
-} from "../model/hand";
+import { emptyGlyphs, parseGlyphs, serialiseGlyphs, type GlyphsData } from "../model/hand";
 import {
   emptySheetData,
   emptyTrackers,
@@ -44,7 +45,16 @@ import {
   type History,
 } from "../canvas/history";
 import { backend } from "../storage/backend";
-import { glyphsPath, pagePath, sheetPath, trackersPath } from "../storage/paths";
+import {
+  characterPath,
+  glyphsPath,
+  legacyGlyphsPath,
+  notebookPathFor,
+  pagePath,
+  sectionPagesDir,
+  sheetPath,
+  trackersPath,
+} from "../storage/paths";
 import {
   forgetDiskText,
   knownDiskText,
@@ -53,6 +63,7 @@ import {
   savePage,
   type LoadedPage,
 } from "../storage/notebook";
+import { comparePageFiles } from "../model/page";
 
 export const AUTOSAVE_DELAY_MS = 800;
 
@@ -64,7 +75,7 @@ export type CharacterState =
       status: "ok";
       notebookPath: string;
       character: Character;
-      /** Pages per section id, in file/created order. */
+      /** Pages per section id, in reading order. */
       sectionPages: Record<string, LoadedPage[]>;
       errors: string[];
       glyphs: GlyphsData;
@@ -74,6 +85,9 @@ export type CharacterState =
 
 export type SpreadPos = { characterId: string; sectionId: string; spreadIndex: number };
 export type View = SpreadPos | { kind: "empty" };
+
+/** A page on screen. `virtual` pages are blank paper that becomes a real file when written on. */
+export type ShownPage = LoadedPage & { index: number; virtual: boolean };
 
 export type SaveState =
   | { kind: "saved"; at?: Date }
@@ -94,6 +108,7 @@ type NotebookStore = {
   notice: string | null;
   flash: { elementId: string; nonce: number } | null;
   historyTick: number;
+  /** Which page of the spread tools act on: 0 left, 1 right. */
   pageOffset: 0 | 1;
 
   setPageOffset(offset: 0 | 1): void;
@@ -110,9 +125,22 @@ type NotebookStore = {
   archiveCharacter(characterId: string): Promise<void>;
   restoreCharacter(characterId: string): Promise<void>;
   moveCharacter(characterId: string, slot: number): Promise<void>;
+  /** After a change of folder: point the character at `folder` and load it from there. */
+  setCharacterFolder(characterId: string, folder: string): Promise<void>;
   reloadCharacter(characterId: string): Promise<void>;
   openCharacter(characterId: string): void;
   openSection(characterId: string, sectionId: string): void;
+
+  addSection(characterId: string, name: string, colour: string): Promise<string | null>;
+  updateSection(
+    characterId: string,
+    sectionId: string,
+    patch: Partial<Pick<Section, "name" | "colour">>,
+  ): Promise<void>;
+  moveSection(characterId: string, sectionId: string, slot: number): Promise<void>;
+  /** Removes a section; its folder (and any pages) goes to the Recycle Bin. */
+  removeSection(characterId: string, sectionId: string): Promise<boolean>;
+
   setSettingsOpen(open: boolean): void;
   setPageListOpen(open: boolean): void;
   setHandwritingOpen(open: boolean): void;
@@ -122,14 +150,24 @@ type NotebookStore = {
   updateTrackers(characterId: string, mutate: (t: TrackerState) => TrackerState): Promise<void>;
   longRest(characterId: string): Promise<void>;
   shortRest(characterId: string): Promise<void>;
+  /** Puts the trackers back as they were before the last rest. */
+  undoRest(characterId: string): Promise<void>;
+  canUndoRest(characterId: string): boolean;
   dismissNotice(): void;
 
-  /** Navigate to a spread by absolute index in the current section. */
+  /** Navigate to a spread by index in the current section. */
   goToSpread(index: number): void;
   /** Move by delta spreads (+1 next, -1 prev). */
   goToSpreadDelta(delta: number): void;
+  /** Opens the spread holding the page with this id in the current section. */
+  goToPage(pageId: string): void;
 
+  /** Starts a new spread at the end of the current section. */
+  newSpread(): Promise<void>;
+  /** Kept for callers that add a single page: same as a new spread. */
   newPage(): Promise<void>;
+  /** Sessions: a new spread titled "Session N" with today's date and a place field. */
+  newSession(): Promise<void>;
   duplicatePage(characterId: string, sectionId: string, pageId: string): Promise<void>;
   deletePage(characterId: string, sectionId: string, pageId: string): Promise<boolean>;
   renamePage(characterId: string, sectionId: string, pageId: string, title: string): void;
@@ -140,11 +178,13 @@ type NotebookStore = {
   undo(): void;
   redo(): void;
   flushSaves(): Promise<void>;
-  applyOutsideChanges(notebookPath: string, fileNames: string[], rescan?: boolean): Promise<void>;
+  /** `files` are `<sectionId>/<file>.page.json`, as the folder watcher reports them. */
+  applyOutsideChanges(notebookPath: string, files: string[], rescan?: boolean): Promise<void>;
   clearFlash(): void;
 };
 
 const histories = new Map<string, History<Element[]>>();
+const restUndo = new Map<string, TrackerState[]>();
 
 export function historyFor(pageId: string | undefined): { canUndo: boolean; canRedo: boolean } {
   const h = pageId ? histories.get(pageId) : undefined;
@@ -157,34 +197,109 @@ const sameElements = (a: Element[], b: Element[]) =>
 export const visibleCharacters = (c: AppConfig): CharacterConfig[] =>
   c.characters.filter((ch) => !ch.archived).sort((a, b) => a.order - b.order);
 
-/** Returns the two pages for the current spread, or just the left page if at the last odd page. */
-export function currentSpreadPages(
-  s: Pick<NotebookStore, "view" | "characters">,
-): { left: LoadedPage | null; right: LoadedPage | null; spreadIndex: number; spreadCount: number } | null {
-  if (!("characterId" in s.view)) return null;
-  const { characterId, sectionId, spreadIndex } = s.view;
-  const ch = s.characters[characterId];
-  if (!ch || ch.status !== "ok") return null;
-  const pages = ch.sectionPages[sectionId] ?? [];
-  const spreadCount = Math.ceil(pages.length / 2);
-  const leftIdx = spreadIndex * 2;
-  const left = pages[leftIdx] ?? null;
-  const right = pages[leftIdx + 1] ?? null;
-  return { left, right, spreadIndex, spreadCount };
+/** Spreads in a section: pages in pairs, the first page always on the left; never fewer than one. */
+export const spreadCount = (pageCount: number) => Math.max(1, Math.ceil(pageCount / 2));
+
+// ----- blank pages -----
+
+/**
+ * Blank pages shown where a spread has no page yet. They are cached so the same blank page
+ * (and its id) comes back on every render until it is written on.
+ */
+const blanks = new Map<string, Page>();
+
+function blankPage(
+  characterId: string,
+  section: Section | undefined,
+  sectionId: string,
+  index: number,
+  pages: LoadedPage[],
+): Page {
+  const key = `${characterId}:${sectionId}:${index}`;
+  let p = blanks.get(key);
+  if (!p) {
+    if (index % 2 === 1) {
+      // A right-hand page continues whatever is on the left.
+      const prev = pages[index - 1]?.page ?? blankPage(characterId, section, sectionId, index - 1, pages);
+      p = createPage(new Date(), `${prev.title.replace(/, cont\.$/, "")}, cont.`, sectionId);
+    } else if (section?.kind === "sessions") {
+      const number = Math.max(0, ...pages.map((x) => x.page.session?.number ?? 0)) + 1;
+      p = {
+        ...createPage(new Date(), `Session ${number}`, sectionId),
+        session: { number, date: todayIso(), place: "" },
+      };
+    } else {
+      p = createPage(new Date(), index === 0 ? (section?.name ?? "Untitled page") : "Untitled page", sectionId);
+    }
+    blanks.set(key, p);
+  }
+  return p;
 }
 
-/** The left page (or right if no left), for tools and element edits. */
-export function currentPageOf(
-  s: Pick<NotebookStore, "view" | "characters" | "pageOffset">,
-): { characterId: string; sectionId: string; loaded: LoadedPage; index: number; count: number } | null {
+function todayIso(now = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function forgetBlanks(characterId: string, sectionId: string) {
+  for (const k of [...blanks.keys()])
+    if (k.startsWith(`${characterId}:${sectionId}:`)) blanks.delete(k);
+}
+
+// Selectors must return the same object for the same page, or React re-renders forever.
+const shownCache = new WeakMap<LoadedPage, Map<number, ShownPage>>();
+const blankCache = new WeakMap<Page, ShownPage>();
+
+function shown(loaded: LoadedPage, index: number): ShownPage {
+  let byIndex = shownCache.get(loaded);
+  if (!byIndex) shownCache.set(loaded, (byIndex = new Map()));
+  let s = byIndex.get(index);
+  if (!s) byIndex.set(index, (s = { ...loaded, index, virtual: false }));
+  return s;
+}
+
+function shownBlank(page: Page, index: number): ShownPage {
+  let s = blankCache.get(page);
+  if (!s || s.index !== index) {
+    s = { fileName: "", page, readOnly: false, index, virtual: true };
+    blankCache.set(page, s);
+  }
+  return s;
+}
+
+/** The two pages of the current spread; blank paper where there is no page yet. */
+export function currentSpreadPages(
+  s: Pick<NotebookStore, "view" | "characters">,
+): { left: ShownPage; right: ShownPage; spreadIndex: number; spreadCount: number } | null {
   if (!("characterId" in s.view)) return null;
   const { characterId, sectionId, spreadIndex } = s.view;
   const ch = s.characters[characterId];
   if (!ch || ch.status !== "ok") return null;
   const pages = ch.sectionPages[sectionId] ?? [];
-  if (pages.length === 0) return null;
-  const idx = Math.min(spreadIndex * 2 + s.pageOffset, pages.length - 1);
-  return { characterId, sectionId, loaded: pages[idx], index: idx, count: pages.length };
+  const section = ch.character.sections.find((x) => x.id === sectionId);
+  const side = (index: number): ShownPage =>
+    pages[index]
+      ? shown(pages[index], index)
+      : shownBlank(blankPage(characterId, section, sectionId, index, pages), index);
+  return {
+    left: side(spreadIndex * 2),
+    right: side(spreadIndex * 2 + 1),
+    spreadIndex,
+    spreadCount: Math.max(spreadCount(pages.length), spreadIndex + 1),
+  };
+}
+
+/** The page tools act on (left or right of the spread, by `pageOffset`). */
+export function currentPageOf(
+  s: Pick<NotebookStore, "view" | "characters" | "pageOffset">,
+): { characterId: string; sectionId: string; loaded: ShownPage; index: number; count: number } | null {
+  const spread = currentSpreadPages(s);
+  if (!spread || !("characterId" in s.view)) return null;
+  const { characterId, sectionId } = s.view;
+  const ch = s.characters[characterId];
+  const count = ch?.status === "ok" ? (ch.sectionPages[sectionId] ?? []).length : 0;
+  const loaded = s.pageOffset === 1 ? spread.right : spread.left;
+  return { characterId, sectionId, loaded, index: loaded.index, count };
 }
 
 // ----- autosave plumbing -----
@@ -194,6 +309,8 @@ const pending = new Map<string, () => Promise<void>>();
 const inFlight = new Map<string, Promise<void>>();
 const outsideQueue = new Map<string, Promise<void>>();
 const watched = new Map<string, string>();
+/** Where each character was last open, so switching back returns to the same spread. */
+const lastViewOf = new Map<string, { sectionId: string; spreadIndex: number }>();
 
 function scheduleSave(key: string, run: () => Promise<void>) {
   const old = timers.get(key);
@@ -210,6 +327,8 @@ function scheduleSave(key: string, run: () => Promise<void>) {
   );
 }
 
+let configWrite: ReturnType<typeof setTimeout> | undefined;
+
 export const useNotebook = create<NotebookStore>((set, get) => {
   async function persistConfig(config: AppConfig) {
     await backend.writeAppConfig(JSON.stringify(config, null, 2) + "\n");
@@ -219,13 +338,57 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     set((s) => ({ characters: { ...s.characters, [characterId]: state } }));
   }
 
-  function rememberLast(characterId: string, sectionId?: string) {
-    const c = get().config;
-    if (c.lastOpened.characterId === characterId && c.lastOpened.sectionId === sectionId) return;
-    void get().updateConfig((cfg) => ({
-      ...cfg,
-      lastOpened: { characterId, sectionId },
-    }));
+  function okState(characterId: string) {
+    const ch = get().characters[characterId];
+    return ch?.status === "ok" ? ch : null;
+  }
+
+  function setPages(characterId: string, sectionId: string, pages: LoadedPage[]) {
+    const ch = okState(characterId);
+    if (!ch) return;
+    setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: pages } });
+  }
+
+  /** Remembers the open spread; the config file is written at most twice a second. */
+  function rememberLast(characterId: string, sectionId: string, spreadIndex: number) {
+    lastViewOf.set(characterId, { sectionId, spreadIndex });
+    const cur = get().config.lastOpened;
+    if (
+      cur.characterId === characterId &&
+      cur.sectionId === sectionId &&
+      cur.spreadIndex === spreadIndex
+    )
+      return;
+    const config = { ...get().config, lastOpened: { characterId, sectionId, spreadIndex } };
+    set({ config });
+    clearTimeout(configWrite);
+    configWrite = setTimeout(() => void persistConfig(get().config), 500);
+  }
+
+  function setView(characterId: string, sectionId: string, spreadIndex: number) {
+    set({ view: { characterId, sectionId, spreadIndex }, pageOffset: 0 });
+    rememberLast(characterId, sectionId, spreadIndex);
+  }
+
+  async function writeCharacter(characterId: string, character: Character) {
+    const ch = okState(characterId);
+    if (!ch) return;
+    setCharacter(characterId, { ...ch, character });
+    try {
+      await backend.writeTextAtomic(characterPath(ch.notebookPath), serialiseCharacter(character));
+    } catch (e) {
+      set({ notice: `Could not save the character's sections: ${String(e)}` });
+    }
+  }
+
+  function withPageOrder(character: Character, sectionId: string, pages: LoadedPage[]): Character {
+    return {
+      ...character,
+      updatedAt: new Date().toISOString(),
+      sections: character.sections.map((s) =>
+        s.id === sectionId ? { ...s, pageOrder: pages.map((p) => p.page.id) } : s,
+      ),
+    };
   }
 
   function savePageNow(characterId: string, sectionId: string, pageId: string): Promise<void> {
@@ -237,41 +400,41 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     return run;
   }
 
+  /** Saves a page; when its title changed, its file is renamed to match (keeping its number). */
   async function writePage(characterId: string, sectionId: string, pageId: string) {
-    const ch = get().characters[characterId];
-    if (!ch || ch.status !== "ok") return;
+    const ch = okState(characterId);
+    if (!ch) return;
     const pages = ch.sectionPages[sectionId] ?? [];
     const loaded = pages.find((p) => p.page.id === pageId);
     if (!loaded || loaded.readOnly) return;
     set({ save: { kind: "saving" } });
     try {
       let fileName = loaded.fileName;
-      const stem = pageFileName(loaded.page).replace(/\.page\.json$/, "");
-      const matches = new RegExp(
-        `^${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(-\\d+)?\\.page\\.json$`,
-      );
-      if (!matches.test(fileName)) {
+      const number = fileNumber(fileName);
+      const slug = slugify(loaded.page.title);
+      const matches =
+        number !== null &&
+        new RegExp(`^\\d{4,}-${slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(-\\d+)?\\.page\\.json$`).test(
+          fileName,
+        );
+      if (number !== null && !matches) {
         const taken = new Set(pages.filter((p) => p !== loaded).map((p) => p.fileName));
-        const next = uniquePageFileName(loaded.page, taken);
+        const next = uniquePageFileName(number, loaded.page.title, taken);
         const from = pagePath(ch.notebookPath, sectionId, fileName);
         if (await backend.pathExists(from)) {
           await backend.renameFile(from, pagePath(ch.notebookPath, sectionId, next));
         }
         forgetDiskText(from);
         fileName = next;
-        await savePage(ch.notebookPath, sectionId, fileName, loaded.page);
-      } else {
-        await savePage(ch.notebookPath, sectionId, fileName, loaded.page);
       }
-      const cur = get().characters[characterId];
-      if (cur?.status === "ok") {
-        const updatedPages = (cur.sectionPages[sectionId] ?? []).map((p) =>
-          p.page.id === pageId ? { ...p, fileName } : p,
+      await savePage(ch.notebookPath, sectionId, fileName, loaded.page);
+      const cur = okState(characterId);
+      if (cur && fileName !== loaded.fileName) {
+        setPages(
+          characterId,
+          sectionId,
+          (cur.sectionPages[sectionId] ?? []).map((p) => (p.page.id === pageId ? { ...p, fileName } : p)),
         );
-        setCharacter(characterId, {
-          ...cur,
-          sectionPages: { ...cur.sectionPages, [sectionId]: updatedPages },
-        });
       }
       set({ save: pending.size === 0 ? { kind: "saved", at: new Date() } : { kind: "unsaved" } });
     } catch (e) {
@@ -281,27 +444,27 @@ export const useNotebook = create<NotebookStore>((set, get) => {
 
   function dropPage(characterId: string, sectionId: string, pageId: string) {
     histories.delete(pageId);
-    const ch = get().characters[characterId];
-    if (ch?.status !== "ok") return;
+    const ch = okState(characterId);
+    if (!ch) return;
     const pages = ch.sectionPages[sectionId] ?? [];
     const index = pages.findIndex((p) => p.page.id === pageId);
     if (index < 0) return;
     const updated = pages.filter((p) => p.page.id !== pageId);
-    setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updated } });
-
-    // If we dropped the current page, move to neighbour
+    forgetBlanks(characterId, sectionId);
+    setPages(characterId, sectionId, updated);
     const view = get().view;
     if ("characterId" in view && view.characterId === characterId && view.sectionId === sectionId) {
-      const spreadIndex = Math.floor(Math.min(index, Math.max(0, updated.length - 1)) / 2);
-      set({ view: { ...view, spreadIndex: Math.max(0, spreadIndex) } });
+      const max = spreadCount(updated.length) - 1;
+      if (view.spreadIndex > max) setView(characterId, sectionId, max);
     }
   }
 
-  function syncCharacterJson(characterId: string) {
+  function syncCharacterMeta(characterId: string) {
     const cfg = get().config.characters.find((c) => c.id === characterId);
-    const state = get().characters[characterId];
-    if (!cfg || state?.status !== "ok") return;
-    void backend.updateCharacterMeta(state.notebookPath, cfg.name, cfg.cover).catch(() => undefined);
+    const ch = okState(characterId);
+    if (!cfg || !ch) return;
+    if (ch.character.name === cfg.name && ch.character.cover === cfg.cover) return;
+    void writeCharacter(characterId, { ...ch.character, name: cfg.name, cover: cfg.cover });
   }
 
   function watchFolder(characterId: string, notebookPath: string | null) {
@@ -317,22 +480,94 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     }
   }
 
-  async function addPage(characterId: string, sectionId: string, page: Page) {
-    const ch = get().characters[characterId];
-    if (!ch || ch.status !== "ok") return;
-    const pages = ch.sectionPages[sectionId] ?? [];
+  /**
+   * Turns blank pages into files: every blank page up to and including `index`, so writing on
+   * the right page of an empty spread never makes it slide to the left.
+   */
+  async function materialise(
+    characterId: string,
+    sectionId: string,
+    index: number,
+    overrides?: (page: Page, at: number) => Page,
+  ): Promise<LoadedPage | null> {
+    const ch = okState(characterId);
+    if (!ch) return null;
+    const section = ch.character.sections.find((s) => s.id === sectionId);
+    let pages = [...(ch.sectionPages[sectionId] ?? [])];
+    if (index < pages.length) return pages[index];
+    const created: LoadedPage[] = [];
     const taken = new Set(pages.map((p) => p.fileName));
-    const fileName = uniquePageFileName(page, taken);
-    const updated = [...pages, { fileName, page, readOnly: false }];
-    setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updated } });
-    const spreadIndex = Math.floor((updated.length - 1) / 2);
-    set({ view: { characterId, sectionId, spreadIndex } });
-    rememberLast(characterId, sectionId);
+    for (let at = pages.length; at <= index; at++) {
+      let page = blankPage(characterId, section, sectionId, at, pages);
+      if (overrides) page = overrides(page, at);
+      const number = nextFileNumber([...taken]);
+      const fileName = uniquePageFileName(number, page.title, taken);
+      taken.add(fileName);
+      const entry: LoadedPage = { fileName, page, readOnly: false };
+      pages = [...pages, entry];
+      created.push(entry);
+    }
+    forgetBlanks(characterId, sectionId);
+    setPages(characterId, sectionId, pages);
+    const cur = okState(characterId);
+    if (cur) void writeCharacter(characterId, withPageOrder(cur.character, sectionId, pages));
     try {
-      await savePage(ch.notebookPath, sectionId, fileName, page);
+      await backend.ensureNotebookDir(ch.notebookPath, `pages/${sectionId}`).catch(() => undefined);
+      for (const p of created) await savePage(ch.notebookPath, sectionId, p.fileName, p.page);
       set({ save: { kind: "saved", at: new Date() } });
     } catch (e) {
       set({ save: { kind: "error", message: String(e) } });
+    }
+    return pages[index];
+  }
+
+  /** Appends pages so the next page lands on a left page, then returns that index. */
+  function nextLeftIndex(count: number) {
+    return count % 2 === 0 ? count : count + 1;
+  }
+
+  function changePage(
+    characterId: string,
+    sectionId: string,
+    pageId: string,
+    mutate: (p: Page) => Page,
+  ) {
+    const ch = okState(characterId);
+    if (!ch) return;
+    const pages = ch.sectionPages[sectionId] ?? [];
+    const loaded = pages.find((p) => p.page.id === pageId);
+    if (!loaded) {
+      // A blank page being written on for the first time.
+      const blank = [...blanks.entries()].find(
+        ([k, p]) => k.startsWith(`${characterId}:${sectionId}:`) && p.id === pageId,
+      );
+      if (!blank) return;
+      const index = Number(blank[0].split(":").pop());
+      const page = mutate(blank[1]);
+      if (page === blank[1]) return;
+      blanks.set(blank[0], page);
+      void materialise(characterId, sectionId, index);
+      return;
+    }
+    if (loaded.readOnly) return;
+    const page = mutate(loaded.page);
+    if (page === loaded.page) return;
+    const stamped = { ...page, updatedAt: new Date().toISOString() };
+    setPages(
+      characterId,
+      sectionId,
+      pages.map((p) => (p.page.id === pageId ? { ...p, page: stamped } : p)),
+    );
+    set({ save: { kind: "unsaved" } });
+    const key = `${characterId}:${sectionId}:${pageId}`;
+    scheduleSave(key, () => savePageNow(characterId, sectionId, pageId));
+  }
+
+  async function readOptional(path: string): Promise<string | null> {
+    try {
+      return (await backend.pathExists(path)) ? await backend.readTextFile(path) : null;
+    } catch {
+      return null;
     }
   }
 
@@ -355,13 +590,22 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const visible = visibleCharacters(config);
       const last = config.lastOpened;
       const startChar = visible.find((c) => c.id === last.characterId) ?? visible[0];
+      if (startChar && startChar.id === last.characterId && last.sectionId) {
+        lastViewOf.set(startChar.id, {
+          sectionId: last.sectionId,
+          spreadIndex: last.spreadIndex ?? 0,
+        });
+      }
+      const start = startChar ? lastViewOf.get(startChar.id) : undefined;
       set({
         config,
-        characters: Object.fromEntries(
-          visible.map((c) => [c.id, { status: "loading" } as CharacterState]),
-        ),
+        characters: Object.fromEntries(visible.map((c) => [c.id, { status: "loading" } as CharacterState])),
         view: startChar
-          ? { characterId: startChar.id, sectionId: last.sectionId ?? "sessions", spreadIndex: 0 }
+          ? {
+              characterId: startChar.id,
+              sectionId: start?.sectionId ?? "sessions",
+              spreadIndex: start?.spreadIndex ?? 0,
+            }
           : { kind: "empty" },
         ready: true,
       });
@@ -374,14 +618,13 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       await persistConfig(config);
     },
 
-    async addCharacter({ name, cover, folder, notebookPath }) {
+    async addCharacter({ name, cover, folder }) {
       const id = newId();
       const order = Math.max(-1, ...get().config.characters.map((c) => c.order)) + 1;
       const cfg: CharacterConfig = { id, name, cover, folder, order, archived: false, excludeFromAi: false };
       await get().updateConfig((c) => ({ ...c, characters: [...c.characters, cfg] }));
       setCharacter(id, { status: "loading" });
       await get().reloadCharacter(id);
-      void notebookPath;
       get().openCharacter(id);
     },
 
@@ -389,48 +632,37 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       if (!name.trim()) return;
       await get().updateConfig((c) => ({
         ...c,
-        characters: c.characters.map((ch) =>
-          ch.id === characterId ? { ...ch, name: name.trim() } : ch,
-        ),
+        characters: c.characters.map((ch) => (ch.id === characterId ? { ...ch, name: name.trim() } : ch)),
       }));
-      syncCharacterJson(characterId);
+      syncCharacterMeta(characterId);
     },
 
     async setCharacterCover(characterId, cover) {
       await get().updateConfig((c) => ({
         ...c,
-        characters: c.characters.map((ch) =>
-          ch.id === characterId ? { ...ch, cover } : ch,
-        ),
+        characters: c.characters.map((ch) => (ch.id === characterId ? { ...ch, cover } : ch)),
       }));
-      syncCharacterJson(characterId);
+      syncCharacterMeta(characterId);
     },
 
     async archiveCharacter(characterId) {
       await get().updateConfig((c) => ({
         ...c,
-        characters: c.characters.map((ch) =>
-          ch.id === characterId ? { ...ch, archived: true } : ch,
-        ),
+        characters: c.characters.map((ch) => (ch.id === characterId ? { ...ch, archived: true } : ch)),
       }));
       watchFolder(characterId, null);
       const view = get().view;
       if ("characterId" in view && view.characterId === characterId) {
         const next = visibleCharacters(get().config).find((c) => c.id !== characterId);
-        set({
-          view: next
-            ? { characterId: next.id, sectionId: "sessions", spreadIndex: 0 }
-            : { kind: "empty" },
-        });
+        if (next) get().openCharacter(next.id);
+        else set({ view: { kind: "empty" } });
       }
     },
 
     async restoreCharacter(characterId) {
       await get().updateConfig((c) => ({
         ...c,
-        characters: c.characters.map((ch) =>
-          ch.id === characterId ? { ...ch, archived: false } : ch,
-        ),
+        characters: c.characters.map((ch) => (ch.id === characterId ? { ...ch, archived: false } : ch)),
       }));
       setCharacter(characterId, { status: "loading" });
       await get().reloadCharacter(characterId);
@@ -443,7 +675,7 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       if (idx < 0) return;
       const reordered = [...visible];
       const [moved] = reordered.splice(idx, 1);
-      reordered.splice(Math.min(slot, reordered.length), 0, moved);
+      reordered.splice(Math.min(slot > idx ? slot - 1 : slot, reordered.length), 0, moved);
       await get().updateConfig((c) => ({
         ...c,
         characters: c.characters.map((ch) => {
@@ -453,14 +685,52 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       }));
     },
 
+    async setCharacterFolder(characterId, folder) {
+      await get().flushSaves();
+      watchFolder(characterId, null);
+      await get().updateConfig((c) => ({
+        ...c,
+        characters: c.characters.map((ch) => (ch.id === characterId ? { ...ch, folder } : ch)),
+      }));
+      setCharacter(characterId, { status: "loading" });
+      await get().reloadCharacter(characterId);
+    },
+
     async reloadCharacter(characterId) {
       const cfg = get().config.characters.find((c) => c.id === characterId);
       if (!cfg) return;
+      const notebookPath = notebookPathFor(cfg.folder);
+      if (!(await backend.pathExists(notebookPath))) {
+        setCharacter(characterId, { status: "missing", notebookPath });
+        watchFolder(characterId, null);
+        return;
+      }
+
+      const charText = await readOptional(characterPath(notebookPath));
+      const read = readCharacter(charText, { id: cfg.id, name: cfg.name, cover: cfg.cover });
+      let character = read.character;
+      let changed = read.changed;
+      if (character.name !== cfg.name || character.cover !== cfg.cover) {
+        character = { ...character, name: cfg.name, cover: cfg.cover };
+        changed = true;
+      }
+      if (changed) {
+        try {
+          await backend.writeTextAtomic(characterPath(notebookPath), serialiseCharacter(character));
+        } catch (e) {
+          set({ notice: `Could not update ${cfg.name}'s character.json: ${String(e)}` });
+        }
+      }
+
+      for (const s of character.sections) {
+        if (!(await backend.pathExists(sectionPagesDir(notebookPath, s.id)))) {
+          await backend.ensureNotebookDir(notebookPath, `pages/${s.id}`).catch(() => undefined);
+        }
+      }
+
       const result = await loadCharacterFromDisk(
         cfg.folder,
-        // Load section ids from the character's default sections for now;
-        // after loading character.json we'd use those sections.
-        ["sessions", "backstory", "likes", "dislikes", "wants", "notes", "sheet"],
+        character.sections.map((s) => s.id),
       );
       if (result.status === "missing") {
         setCharacter(characterId, { status: "missing", notebookPath: result.notebookPath });
@@ -468,71 +738,51 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         return;
       }
 
-      // Try to load character.json for the section order and hand settings.
-      let character: Character;
-      try {
-        const text = await backend.readTextFile(`${result.notebookPath}/character.json`);
-        character = parseCharacter(text) ?? createCharacter(cfg.name, cfg.cover);
-      } catch {
-        character = createCharacter(cfg.name, cfg.cover);
-      }
-
       let glyphs: GlyphsData = emptyGlyphs();
-      try {
-        const glyphText = await backend.readTextFile(glyphsPath(result.notebookPath));
-        glyphs = parseGlyphs(glyphText);
-      } catch {
-        // no glyphs yet — start empty
-      }
+      const glyphText =
+        (await readOptional(glyphsPath(notebookPath))) ??
+        (await readOptional(legacyGlyphsPath(notebookPath)));
+      if (glyphText) glyphs = parseGlyphs(glyphText);
 
-      let sheet: SheetData = emptySheetData();
-      try {
-        const sheetText = await backend.readTextFile(sheetPath(result.notebookPath));
-        sheet = parseSheetData(sheetText);
-      } catch {
-        // no sheet yet
-      }
+      const sheetText = await readOptional(sheetPath(notebookPath));
+      const sheet: SheetData = sheetText ? parseSheetData(sheetText) : emptySheetData();
+      const trackersText = await readOptional(trackersPath(notebookPath));
+      const trackers: TrackerState = trackersText
+        ? parseTrackers(trackersText, sheet.hp.max)
+        : emptyTrackers(sheet.hp.max);
 
-      let trackers: TrackerState = emptyTrackers(sheet.hp.max);
-      try {
-        const trackersText = await backend.readTextFile(trackersPath(result.notebookPath));
-        trackers = parseTrackers(trackersText, sheet.hp.max);
-      } catch {
-        // no trackers yet
-      }
-
-      // Auto-create sheet pages when the sheet section has none yet.
+      // The sheet section always holds its template pages.
       const sectionPages = { ...result.sectionPages };
       const sheetSection = character.sections.find((s) => s.kind === "sheet");
       if (sheetSection && (sectionPages[sheetSection.id] ?? []).length === 0) {
         const now = new Date().toISOString();
-        const created: LoadedPage[] = SHEET_PAGE_TYPES.map((type) => {
+        const created: LoadedPage[] = SHEET_PAGE_TYPES.map((type, i) => {
           const page: Page = {
             schemaVersion: 1,
-            id: type,
-            title: type,
+            id: newId(),
+            title: SHEET_TITLES[type],
             section: sheetSection.id,
             sheetPageType: type,
             createdAt: now,
             updatedAt: now,
             elements: [],
           };
-          return { fileName: `${type}.page.json`, page, readOnly: false };
+          return { fileName: pageFileName(i + 1, page.title), page, readOnly: false };
         });
         sectionPages[sheetSection.id] = created;
-        // Write page files so they persist across reloads.
         for (const lp of created) {
           try {
-            await savePage(result.notebookPath, sheetSection.id, lp.fileName, lp.page);
+            await savePage(notebookPath, sheetSection.id, lp.fileName, lp.page);
           } catch {
-            // ignore write errors in browser preview
+            // shown as unsaved on first edit
           }
         }
       }
+      for (const id of Object.keys(sectionPages)) sectionPages[id] = [...sectionPages[id]].sort(comparePageFiles);
 
       setCharacter(characterId, {
         status: "ok",
-        notebookPath: result.notebookPath,
+        notebookPath,
         character,
         sectionPages,
         errors: result.errors,
@@ -540,21 +790,22 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         sheet,
         trackers,
       });
-      watchFolder(characterId, result.notebookPath);
+      watchFolder(characterId, notebookPath);
+      if (result.errors.length) {
+        set({ notice: `Some pages could not be opened: ${result.errors.join("; ")}` });
+      }
 
-      // Open to last section if we're viewing this character.
       const view = get().view;
       if ("characterId" in view && view.characterId === characterId) {
-        const v = view;
-        const pages = result.sectionPages[v.sectionId] ?? [];
-        const spreadIndex = Math.min(v.spreadIndex, Math.max(0, Math.ceil(pages.length / 2) - 1));
-        set({ view: { ...v, spreadIndex } });
-        rememberLast(characterId, v.sectionId);
-        const loaded = pages[spreadIndex * 2];
+        const sectionId = character.sections.some((s) => s.id === view.sectionId)
+          ? view.sectionId
+          : (character.sections[0]?.id ?? "sessions");
+        const pages = sectionPages[sectionId] ?? [];
+        const spreadIndex = Math.min(view.spreadIndex, spreadCount(pages.length) - 1);
+        setView(characterId, sectionId, spreadIndex);
+        const left = pages[spreadIndex * 2];
         set({
-          save: loaded?.readOnly
-            ? { kind: "read-only", reason: loaded.warning ?? "" }
-            : { kind: "saved" },
+          save: left?.readOnly ? { kind: "read-only", reason: left.warning ?? "" } : { kind: "saved" },
         });
       }
     },
@@ -563,9 +814,8 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const cfg = get().config.characters.find((c) => c.id === characterId);
       if (!cfg) return;
       const ch = get().characters[characterId];
-      const sectionId = "sessions";
-      set({ view: { characterId, sectionId, spreadIndex: 0 } });
-      rememberLast(characterId, sectionId);
+      const last = lastViewOf.get(characterId);
+      setView(characterId, last?.sectionId ?? "sessions", last?.spreadIndex ?? 0);
       if (!ch || ch.status === "missing") {
         setCharacter(characterId, { status: "loading" });
         void get().reloadCharacter(characterId);
@@ -573,8 +823,97 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     },
 
     openSection(characterId, sectionId) {
-      set({ view: { characterId, sectionId, spreadIndex: 0 } });
-      rememberLast(characterId, sectionId);
+      setView(characterId, sectionId, 0);
+    },
+
+    async addSection(characterId, name, colour) {
+      const ch = okState(characterId);
+      if (!ch || !name.trim()) return null;
+      const id = newSectionId(name, ch.character.sections.map((s) => s.id));
+      try {
+        await backend.ensureNotebookDir(ch.notebookPath, `pages/${id}`);
+      } catch (e) {
+        set({ notice: `Could not add the section: ${String(e)}` });
+        return null;
+      }
+      const section: Section = { id, name: name.trim(), colour, kind: "free", pageOrder: [] };
+      const cur = okState(characterId);
+      if (!cur) return null;
+      setCharacter(characterId, { ...cur, sectionPages: { ...cur.sectionPages, [id]: [] } });
+      await writeCharacter(characterId, {
+        ...cur.character,
+        updatedAt: new Date().toISOString(),
+        sections: [...cur.character.sections, section],
+      });
+      setView(characterId, id, 0);
+      return id;
+    },
+
+    async updateSection(characterId, sectionId, patch) {
+      const ch = okState(characterId);
+      if (!ch) return;
+      const name = patch.name?.trim();
+      await writeCharacter(characterId, {
+        ...ch.character,
+        updatedAt: new Date().toISOString(),
+        sections: ch.character.sections.map((s) =>
+          s.id === sectionId
+            ? { ...s, ...(name ? { name } : {}), ...(patch.colour ? { colour: patch.colour } : {}) }
+            : s,
+        ),
+      });
+    },
+
+    async moveSection(characterId, sectionId, slot) {
+      const ch = okState(characterId);
+      if (!ch) return;
+      const list = [...ch.character.sections];
+      const from = list.findIndex((s) => s.id === sectionId);
+      if (from < 0) return;
+      const [moved] = list.splice(from, 1);
+      const to = Math.max(0, Math.min(slot > from ? slot - 1 : slot, list.length));
+      list.splice(to, 0, moved);
+      if (list.every((s, i) => s === ch.character.sections[i])) return;
+      await writeCharacter(characterId, {
+        ...ch.character,
+        updatedAt: new Date().toISOString(),
+        sections: list,
+      });
+    },
+
+    async removeSection(characterId, sectionId) {
+      const ch = okState(characterId);
+      if (!ch) return false;
+      const section = ch.character.sections.find((s) => s.id === sectionId);
+      if (!section || section.kind === "sheet" || ch.character.sections.length <= 1) return false;
+      await get().flushSaves();
+      try {
+        await backend.trashSectionFolder(ch.notebookPath, sectionId);
+      } catch (e) {
+        set({ notice: String(e) });
+        return false;
+      }
+      for (const p of ch.sectionPages[sectionId] ?? []) {
+        histories.delete(p.page.id);
+        forgetDiskText(pagePath(ch.notebookPath, sectionId, p.fileName));
+      }
+      forgetBlanks(characterId, sectionId);
+      const cur = okState(characterId);
+      if (!cur) return false;
+      const sectionPages = { ...cur.sectionPages };
+      delete sectionPages[sectionId];
+      const sections = cur.character.sections.filter((s) => s.id !== sectionId);
+      setCharacter(characterId, { ...cur, sectionPages });
+      await writeCharacter(characterId, {
+        ...cur.character,
+        updatedAt: new Date().toISOString(),
+        sections,
+      });
+      const view = get().view;
+      if ("characterId" in view && view.characterId === characterId && view.sectionId === sectionId) {
+        setView(characterId, sections[0].id, 0);
+      }
+      return true;
     },
 
     setSettingsOpen(open) {
@@ -590,43 +929,37 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     },
 
     async saveGlyphs(characterId, glyphs) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       setCharacter(characterId, { ...ch, glyphs });
       try {
+        await backend.ensureNotebookDir(ch.notebookPath, "hand").catch(() => undefined);
         await backend.writeTextAtomic(glyphsPath(ch.notebookPath), serialiseGlyphs(glyphs));
       } catch (e) {
-        set({ notice: `Could not save glyphs: ${String(e)}` });
+        set({ notice: `Could not save the handwriting: ${String(e)}` });
       }
     },
 
     async updateHandSettings(characterId, hand) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
-      const character = { ...ch.character, hand };
-      setCharacter(characterId, { ...ch, character });
-      try {
-        const text = JSON.stringify(character, null, 2) + "\n";
-        await backend.writeTextAtomic(`${ch.notebookPath}/character.json`, text);
-      } catch (e) {
-        set({ notice: `Could not save hand settings: ${String(e)}` });
-      }
+      const ch = okState(characterId);
+      if (!ch) return;
+      await writeCharacter(characterId, { ...ch.character, hand, updatedAt: new Date().toISOString() });
     },
 
     async setSheetData(characterId, sheet) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       setCharacter(characterId, { ...ch, sheet });
       try {
         await backend.writeTextAtomic(sheetPath(ch.notebookPath), serialiseSheet(sheet));
       } catch (e) {
-        set({ notice: `Could not save sheet data: ${String(e)}` });
+        set({ notice: `Could not save the character sheet: ${String(e)}` });
       }
     },
 
     async updateTrackers(characterId, mutate) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       const trackers = mutate(ch.trackers);
       if (trackers === ch.trackers) return;
       setCharacter(characterId, { ...ch, trackers });
@@ -638,9 +971,10 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     },
 
     async longRest(characterId) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       const { sheet } = ch;
+      restUndo.set(characterId, [...(restUndo.get(characterId) ?? []), ch.trackers]);
       await get().updateTrackers(characterId, (t) => ({
         ...t,
         currentHp: sheet.hp.max,
@@ -649,21 +983,20 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         usedHitDice: 0,
         deathSavesSuccess: 0,
         deathSavesFail: 0,
-        // Restore all features that restore on a long rest.
         usedFeatures: Object.fromEntries(
           Object.entries(t.usedFeatures).filter(([id]) => {
             const feat = sheet.features.find((f) => f.id === id);
-            if (!feat?.uses) return false;
-            return feat.uses.restoreOn !== "long";
+            return !!feat?.uses && feat.uses.restoreOn !== "long" && feat.uses.restoreOn !== "short";
           }),
         ),
       }));
     },
 
     async shortRest(characterId) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       const { sheet } = ch;
+      restUndo.set(characterId, [...(restUndo.get(characterId) ?? []), ch.trackers]);
       await get().updateTrackers(characterId, (t) => ({
         ...t,
         usedFeatures: Object.fromEntries(
@@ -672,11 +1005,7 @@ export const useNotebook = create<NotebookStore>((set, get) => {
               const feat = sheet.features.find((f) => f.id === id);
               if (!feat?.uses) return [id, used];
               if (feat.uses.restoreOn === "short") return [id, 0];
-              // Partial restore: e.g. Wild Shape gets 1 charge back on short rest.
-              if (
-                feat.uses.partialRestoreOn === "short" &&
-                feat.uses.partialAmount !== undefined
-              ) {
+              if (feat.uses.partialRestoreOn === "short" && feat.uses.partialAmount !== undefined) {
                 return [id, Math.max(0, used - feat.uses.partialAmount)];
               }
               return [id, used];
@@ -684,6 +1013,17 @@ export const useNotebook = create<NotebookStore>((set, get) => {
             .filter(([, used]) => (used as number) > 0),
         ),
       }));
+    },
+
+    async undoRest(characterId) {
+      const stack = restUndo.get(characterId);
+      const prev = stack?.pop();
+      if (!prev) return;
+      await get().updateTrackers(characterId, () => prev);
+    },
+
+    canUndoRest(characterId) {
+      return (restUndo.get(characterId)?.length ?? 0) > 0;
     },
 
     dismissNotice() {
@@ -697,11 +1037,11 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     goToSpread(index) {
       const view = get().view;
       if (!("characterId" in view)) return;
-      const ch = get().characters[view.characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(view.characterId);
+      if (!ch) return;
       const pages = ch.sectionPages[view.sectionId] ?? [];
-      const max = Math.max(0, Math.ceil(pages.length / 2) - 1);
-      set({ view: { ...view, spreadIndex: Math.max(0, Math.min(index, max)) }, pageOffset: 0 });
+      const max = spreadCount(pages.length) - 1;
+      setView(view.characterId, view.sectionId, Math.max(0, Math.min(index, max)));
     },
 
     goToSpreadDelta(delta) {
@@ -710,17 +1050,51 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       get().goToSpread(view.spreadIndex + delta);
     },
 
-    async newPage() {
+    goToPage(pageId) {
+      const view = get().view;
+      if (!("characterId" in view)) return;
+      const ch = okState(view.characterId);
+      const index = (ch?.sectionPages[view.sectionId] ?? []).findIndex((p) => p.page.id === pageId);
+      if (index >= 0) setView(view.characterId, view.sectionId, Math.floor(index / 2));
+    },
+
+    async newSpread() {
       const view = get().view;
       if (!("characterId" in view)) return;
       const { characterId, sectionId } = view;
-      const page = createPage(new Date(), "Untitled page", sectionId);
-      await addPage(characterId, sectionId, page);
+      const ch = okState(characterId);
+      if (!ch) return;
+      const count = (ch.sectionPages[sectionId] ?? []).length;
+      const at = nextLeftIndex(count);
+      await materialise(characterId, sectionId, at, (page, i) =>
+        i === at ? { ...page, title: "Untitled page" } : page,
+      );
+      setView(characterId, sectionId, at / 2);
+    },
+
+    async newPage() {
+      await get().newSpread();
+    },
+
+    async newSession() {
+      const view = get().view;
+      if (!("characterId" in view)) return;
+      const { characterId, sectionId } = view;
+      const ch = okState(characterId);
+      if (!ch) return;
+      const pages = ch.sectionPages[sectionId] ?? [];
+      const number = Math.max(0, ...pages.map((p) => p.page.session?.number ?? 0)) + 1;
+      const at = nextLeftIndex(pages.length);
+      const date = todayIso();
+      await materialise(characterId, sectionId, at, (page, i) =>
+        i === at ? { ...page, title: `Session ${number}`, session: { number, date, place: "" } } : page,
+      );
+      setView(characterId, sectionId, at / 2);
     },
 
     async duplicatePage(characterId, sectionId, pageId) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
+      const ch = okState(characterId);
+      if (!ch) return;
       const pages = ch.sectionPages[sectionId] ?? [];
       const loaded = pages.find((p) => p.page.id === pageId);
       if (!loaded) return;
@@ -733,16 +1107,22 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         updatedAt: now,
         elements: loaded.page.elements.map((el) => ({ ...el, id: newId() })),
       };
-      await addPage(characterId, sectionId, copy);
+      const at = pages.length;
+      await materialise(characterId, sectionId, at, (page, i) => (i === at ? copy : page));
+      setView(characterId, sectionId, Math.floor(at / 2));
     },
 
     async deletePage(characterId, sectionId, pageId) {
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return false;
+      const ch = okState(characterId);
+      if (!ch) return false;
       const pages = ch.sectionPages[sectionId] ?? [];
       const loaded = pages.find((p) => p.page.id === pageId);
       if (!loaded) return false;
       const key = `${characterId}:${sectionId}:${pageId}`;
+      const t = timers.get(key);
+      if (t) clearTimeout(t);
+      timers.delete(key);
+      pending.delete(key);
       const inflight = inFlight.get(key);
       if (inflight) await inflight.catch(() => undefined);
       const path = pagePath(ch.notebookPath, sectionId, loaded.fileName);
@@ -750,6 +1130,13 @@ export const useNotebook = create<NotebookStore>((set, get) => {
         await backend.trashPageFile(path);
         forgetDiskText(path);
         dropPage(characterId, sectionId, pageId);
+        const cur = okState(characterId);
+        if (cur) {
+          void writeCharacter(
+            characterId,
+            withPageOrder(cur.character, sectionId, cur.sectionPages[sectionId] ?? []),
+          );
+        }
         return true;
       } catch (e) {
         set({ save: { kind: "error", message: String(e) } });
@@ -758,67 +1145,31 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     },
 
     renamePage(characterId, sectionId, pageId, title) {
-      if (!title.trim()) return;
-      const ch0 = get().characters[characterId];
-      if (ch0?.status === "ok") {
-        const p0 = ch0.sectionPages[sectionId]?.find((p) => p.page.id === pageId);
-        if (p0 && p0.page.title === title.trim()) return;
-      }
-      const ch = get().characters[characterId];
-      if (!ch || ch.status !== "ok") return;
-      const pages = ch.sectionPages[sectionId] ?? [];
-      const loaded = pages.find((p) => p.page.id === pageId);
-      if (!loaded) return;
-      const updated = { ...loaded, page: { ...loaded.page, title: title.trim() } };
-      const updatedPages = pages.map((p) => (p.page.id === pageId ? updated : p));
-      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
-      const key = `${characterId}:${sectionId}:${pageId}`;
-      scheduleSave(key, () => savePageNow(characterId, sectionId, pageId));
+      const t = title.trim();
+      if (!t) return;
+      changePage(characterId, sectionId, pageId, (p) => (p.title === t ? p : { ...p, title: t }));
     },
 
     updatePage(mutate) {
       const cur = currentPageOf(get());
       if (!cur) return;
-      const { characterId, sectionId, loaded } = cur;
-      const page = mutate(loaded.page);
-      if (page === loaded.page) return;
-      const ch = get().characters[characterId];
-      if (ch?.status !== "ok") return;
-      const pages = ch.sectionPages[sectionId] ?? [];
-      const updatedPages = pages.map((p) => (p.page.id === page.id ? { ...p, page } : p));
-      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
-      set({ save: { kind: "unsaved" } });
-      const key = `${characterId}:${sectionId}:${page.id}`;
-      scheduleSave(key, () => savePageNow(characterId, sectionId, page.id));
+      changePage(cur.characterId, cur.sectionId, cur.loaded.page.id, mutate);
     },
 
     updatePageIn(characterId, sectionId, pageId, mutate) {
-      const ch = get().characters[characterId];
-      if (ch?.status !== "ok") return;
-      const pages = ch.sectionPages[sectionId] ?? [];
-      const loaded = pages.find((p) => p.page.id === pageId);
-      if (!loaded) return;
-      const page = mutate(loaded.page);
-      if (page === loaded.page) return;
-      const updatedPages = pages.map((p) => (p.page.id === pageId ? { ...p, page } : p));
-      setCharacter(characterId, { ...ch, sectionPages: { ...ch.sectionPages, [sectionId]: updatedPages } });
-      set({ save: { kind: "unsaved" } });
-      const key = `${characterId}:${sectionId}:${pageId}`;
-      scheduleSave(key, () => savePageNow(characterId, sectionId, pageId));
+      changePage(characterId, sectionId, pageId, mutate);
     },
 
     editElements(mutate) {
       const cur = currentPageOf(get());
-      if (!cur) return;
-      const { loaded } = cur;
-      const page = loaded.page;
-      const h = histories.get(page.id) ?? emptyHistory<Element[]>();
+      if (!cur || cur.loaded.readOnly) return;
+      const page = cur.loaded.page;
       const next = mutate(page.elements);
       if (sameElements(next, page.elements)) return;
-      const updated = record(h, next);
-      histories.set(page.id, updated);
+      const h = histories.get(page.id) ?? emptyHistory<Element[]>();
+      histories.set(page.id, record(h, next));
       set((s) => ({ historyTick: s.historyTick + 1 }));
-      get().updatePage((p) => ({ ...p, elements: next }));
+      changePage(cur.characterId, cur.sectionId, page.id, (p) => ({ ...p, elements: next }));
     },
 
     undo() {
@@ -827,11 +1178,11 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const page = cur.loaded.page;
       const h = histories.get(page.id);
       if (!h || h.past.length === 0) return;
-      const undoResult = undoStep(h, page.elements);
-      if (!undoResult) return;
-      histories.set(page.id, undoResult.history);
+      const r = undoStep(h, page.elements);
+      if (!r) return;
+      histories.set(page.id, r.history);
       set((s) => ({ historyTick: s.historyTick + 1 }));
-      get().updatePage((p) => ({ ...p, elements: undoResult.value }));
+      changePage(cur.characterId, cur.sectionId, page.id, (p) => ({ ...p, elements: r.value }));
     },
 
     redo() {
@@ -840,40 +1191,41 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const page = cur.loaded.page;
       const h = histories.get(page.id);
       if (!h || h.future.length === 0) return;
-      const redoResult = redoStep(h, page.elements);
-      if (!redoResult) return;
-      histories.set(page.id, redoResult.history);
+      const r = redoStep(h, page.elements);
+      if (!r) return;
+      histories.set(page.id, r.history);
       set((s) => ({ historyTick: s.historyTick + 1 }));
-      get().updatePage((p) => ({ ...p, elements: redoResult.value }));
+      changePage(cur.characterId, cur.sectionId, page.id, (p) => ({ ...p, elements: r.value }));
     },
 
     async flushSaves() {
-      const jobs = [...pending.values()].map((job) => {
-        const p = job();
-        return p;
-      });
+      const jobs = [...pending.values()].map((job) => job());
       pending.clear();
       timers.forEach(clearTimeout);
       timers.clear();
       await Promise.all([...jobs, ...inFlight.values()].map((p) => p.catch(() => undefined)));
+      if (configWrite) {
+        clearTimeout(configWrite);
+        configWrite = undefined;
+        await persistConfig(get().config).catch(() => undefined);
+      }
     },
 
-    async applyOutsideChanges(notebookPath, fileNames, rescan) {
-      // Find the character this notebook belongs to.
+    async applyOutsideChanges(notebookPath, files, rescan) {
       const characterId = Object.entries(get().characters).find(
         ([, state]) => state.status === "ok" && state.notebookPath === notebookPath,
       )?.[0];
       if (!characterId) return;
-
-      // Deduplicate into one queue per notebook path.
       const prev = outsideQueue.get(notebookPath) ?? Promise.resolve();
       const next = prev.then(async () => {
         if (rescan) {
           await get().reloadCharacter(characterId);
           return;
         }
-        for (const fileName of fileNames) {
-          await applyOutsideFile(characterId, fileName);
+        for (const rel of files) {
+          const slash = rel.indexOf("/");
+          if (slash < 0) continue;
+          await applyOutsideFile(characterId, rel.slice(0, slash), rel.slice(slash + 1));
         }
       });
       outsideQueue.set(notebookPath, next.catch(() => undefined));
@@ -885,74 +1237,68 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     },
   };
 
-  async function applyOutsideFile(characterId: string, fileName: string) {
-    // fileName from the watcher is just the basename; we need to find which section it's in.
-    const ch = get().characters[characterId];
-    if (ch?.status !== "ok") return;
-
-    // Search for the file across all sections.
-    for (const [sectionId, pages] of Object.entries(ch.sectionPages)) {
-      const existing = pages.find((p) => p.fileName === fileName);
-      const path = existing
-        ? pagePath(ch.notebookPath, sectionId, fileName)
-        : null;
-
-      if (!path) continue;
-
-      const key = `${characterId}:${sectionId}:${existing?.page.id ?? ""}`;
-      const writing = existing && inFlight.get(key);
+  async function applyOutsideFile(characterId: string, sectionId: string, fileName: string) {
+    const ch = okState(characterId);
+    if (!ch || !ch.character.sections.some((s) => s.id === sectionId)) return;
+    const path = pagePath(ch.notebookPath, sectionId, fileName);
+    const pages = ch.sectionPages[sectionId] ?? [];
+    const existing = pages.find((p) => p.fileName === fileName);
+    if (existing) {
+      const writing = inFlight.get(`${characterId}:${sectionId}:${existing.page.id}`);
       if (writing) await writing.catch(() => undefined);
+    }
+    const exists = await backend.pathExists(path);
+    const text = exists ? await backend.readTextFile(path).catch(() => null) : null;
+    if (exists && text === null) return;
+    if (text !== null && text === knownDiskText(path)) return;
 
-      const exists = await backend.pathExists(path);
-      const text = exists ? await backend.readTextFile(path).catch(() => null) : null;
-      if (exists && text === null) continue;
-      if (text !== null && text === knownDiskText(path)) return;
+    const unsaved = (pageId: string) =>
+      pending.has(`${characterId}:${sectionId}:${pageId}`) ||
+      inFlight.has(`${characterId}:${sectionId}:${pageId}`);
 
-      const curCh = get().characters[characterId];
-      if (curCh?.status !== "ok") return;
-      const curPages = curCh.sectionPages[sectionId] ?? [];
-      const unsaved = (pageId: string) =>
-        pending.has(`${characterId}:${sectionId}:${pageId}`) ||
-        inFlight.has(`${characterId}:${sectionId}:${pageId}`);
-
-      if (text === null) {
-        if (!existing) return;
-        if (unsaved(existing.page.id)) {
-          set({ notice: `"${existing.page.title}" was deleted outside the app while you had unsaved changes. Your version was kept.` });
-          return;
-        }
-        forgetDiskText(path);
-        dropPage(characterId, sectionId, existing.page.id);
+    if (text === null) {
+      if (!existing) return;
+      if (unsaved(existing.page.id)) {
+        set({
+          notice: `"${existing.page.title}" was deleted outside the app while you had unsaved changes. Your version was kept.`,
+        });
         return;
       }
-
-      const parsed = parsePage(text);
-      if (!parsed.ok) return;
-      const page = parsed.page;
-      const byId = curPages.find((p) => p.page.id === page.id);
-      const target = existing ?? byId;
-
-      if (target && unsaved(target.page.id)) {
-        set({ notice: `"${target.page.title}" was changed outside the app while you had unsaved changes. Your version was kept.` });
-        return;
-      }
-
-      rememberDiskText(path, text);
-      if (existing && existing.page.id !== page.id) dropPage(characterId, sectionId, existing.page.id);
-      const freshCh = get().characters[characterId];
-      if (freshCh?.status !== "ok") return;
-      const freshPages = freshCh.sectionPages[sectionId] ?? [];
-      const entry: LoadedPage = { fileName, page, readOnly: parsed.readOnly, warning: parsed.warning };
-      const updatedPages = [...freshPages.filter((p) => p.page.id !== page.id), entry].sort((a, b) =>
-        a.page.createdAt.localeCompare(b.page.createdAt),
-      );
-      histories.delete(page.id);
-      setCharacter(characterId, {
-        ...freshCh,
-        sectionPages: { ...freshCh.sectionPages, [sectionId]: updatedPages },
-      });
-      set((s) => ({ historyTick: s.historyTick + 1 }));
+      forgetDiskText(path);
+      dropPage(characterId, sectionId, existing.page.id);
       return;
     }
+
+    const parsed = parsePage(text);
+    if (!parsed.ok) return;
+    const page = parsed.page;
+    const cur = okState(characterId);
+    if (!cur) return;
+    const curPages = cur.sectionPages[sectionId] ?? [];
+    const target = existing ?? curPages.find((p) => p.page.id === page.id);
+    if (target && unsaved(target.page.id)) {
+      set({
+        notice: `"${target.page.title}" was changed outside the app while you had unsaved changes. Your version was kept.`,
+      });
+      return;
+    }
+    rememberDiskText(path, text);
+    const entry: LoadedPage = { fileName, page, readOnly: parsed.readOnly, warning: parsed.warning };
+    const others = curPages.filter((p) => p.page.id !== page.id && p.fileName !== fileName);
+    histories.delete(page.id);
+    forgetBlanks(characterId, sectionId);
+    setPages(characterId, sectionId, [...others, entry].sort(comparePageFiles));
+    set((s) => ({ historyTick: s.historyTick + 1 }));
   }
 });
+
+const SHEET_TITLES: Record<(typeof SHEET_PAGE_TYPES)[number], string> = {
+  "core-left": "Character",
+  "core-right": "Skills and attacks",
+  features: "Features and traits",
+  "spells-kit": "Spells and kit",
+  "spell-list": "Spell list",
+};
+
+/** Serialises a page exactly as saved; exported for tests. */
+export const pageText = serialisePage;

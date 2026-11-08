@@ -1,4 +1,4 @@
-import { parsePage, serialisePage, type Page } from "../model/page";
+import { comparePageFiles, parsePage, serialisePage, type Page } from "../model/page";
 import { backend } from "./backend";
 import { notebookPathFor, pagePath, sectionPagesDir } from "./paths";
 
@@ -62,7 +62,7 @@ export async function loadSectionPages(
       errors.push(`${fileName}: ${String(e)}`);
     }
   }
-  pages.sort((a, b) => a.page.createdAt.localeCompare(b.page.createdAt));
+  pages.sort(comparePageFiles);
   return { status: "ok", pages, errors };
 }
 

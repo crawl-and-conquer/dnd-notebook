@@ -1,23 +1,21 @@
 import { useEffect } from "react";
-import { PaperStage } from "../canvas/PaperStage";
 import { HandContext } from "../canvas/HandContext";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StatusBar } from "../components/StatusBar";
 import { Shelf } from "../components/Shelf";
-import { SectionTabs } from "../components/SectionTabs";
+import { Toolbar } from "../components/Toolbar";
 import { CloseIcon } from "../components/Icons";
 import { backend } from "../storage/backend";
-import { currentSpreadPages, useNotebook } from "../store/notebook";
+import { useNotebook } from "../store/notebook";
 import { TOOL_KEYS, useTools } from "../store/tools";
-import { CatchUpPanel } from "../components/CatchUpPanel";
 import { ExportDialog, useExportDialog } from "../components/ExportDialog";
 import { NewCharacterDialog, useNewCharacterDialog } from "../components/NewCharacterDialog";
 import { ImportDialog, useImportDialog } from "../components/ImportDialog";
+import { ChangeFolderDialog, useChangeFolder } from "../components/ChangeFolderDialog";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { HandBuilder } from "../handwriting/HandBuilder";
-import { SheetPage } from "../sheet/SheetPage";
 import { useUpdates } from "./updates";
-import { useShallow } from "zustand/react/shallow";
-import { usePreviouslyOn } from "../ai/previouslyOn";
+import { BookView } from "./BookView";
 
 /** "Version x is ready" with Install and restart, or Later. */
 function UpdatePrompt() {
@@ -44,12 +42,22 @@ function UpdatePrompt() {
   );
 }
 
-function isTyping(t: EventTarget | null): boolean {
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+
+/** True while any dialog or panel covers the book, so book shortcuts stay quiet. */
+const overlayOpen = () => {
+  const s = useNotebook.getState();
   return (
-    t instanceof HTMLElement &&
-    (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))
+    s.settingsOpen ||
+    s.pageListOpen ||
+    s.handwritingOpen ||
+    useExportDialog.getState().open ||
+    useImportDialog.getState().open ||
+    useNewCharacterDialog.getState().open ||
+    useChangeFolder.getState().characterId !== null
   );
-}
+};
 
 export function App() {
   const ready = useNotebook((s) => s.ready);
@@ -71,8 +79,7 @@ export function App() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
-      const win = getCurrentWindow();
-      const off = await win.onCloseRequested(async () => {
+      const off = await getCurrentWindow().onCloseRequested(async () => {
         try {
           await Promise.race([
             useNotebook.getState().flushSaves(),
@@ -127,7 +134,7 @@ export function App() {
       }
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "i") {
         e.preventDefault();
-        useImportDialog.getState().setOpen(true);
+        if ("characterId" in s.view) useImportDialog.getState().setOpen(true);
         return;
       }
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
@@ -137,22 +144,16 @@ export function App() {
         }
         return;
       }
-      if (
-        isTyping(e.target) ||
-        e.ctrlKey ||
-        e.altKey ||
-        e.metaKey ||
-        s.settingsOpen ||
-        s.pageListOpen ||
-        useExportDialog.getState().open
-      )
+      if (overlayOpen() || isTyping(e.target)) return;
+      if (e.key === "PageDown" || e.key === "PageUp") {
+        e.preventDefault();
+        s.goToSpreadDelta(e.key === "PageDown" ? 1 : -1);
         return;
+      }
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
       const key = e.key.toLowerCase();
       if (key === "g") {
-        void s.updateConfig((c) => ({
-          ...c,
-          general: { ...c.general, lockToLines: !c.general.lockToLines },
-        }));
+        void s.updateConfig((c) => ({ ...c, general: { ...c.general, lockToLines: !c.general.lockToLines } }));
         return;
       }
       const tool = TOOL_KEYS[key];
@@ -164,15 +165,18 @@ export function App() {
 
   return (
     <div className="app">
+      <Toolbar />
       <main className="main">
-        {ready ? <MainView /> : <div className="placeholder-view">Opening notebook…</div>}
-        <CatchUpPanel />
+        <Shelf />
+        {ready ? <MainView /> : <div className="desk placeholder-view">Opening notebook…</div>}
       </main>
       <StatusBar />
       <SettingsPanel />
       <ExportDialog />
       <NewCharacterDialog />
       <ImportDialog />
+      <ChangeFolderDialog />
+      <ConfirmDialog />
       <UpdatePrompt />
       {notice && (
         <div className="notice" role="status">
@@ -188,239 +192,76 @@ export function App() {
 
 function MainView() {
   const view = useNotebook((s) => s.view);
-  const config = useNotebook((s) => s.config);
-  const spread = useNotebook(useShallow(currentSpreadPages));
-  const updatePage = useNotebook((s) => s.updatePage);
-  const setPageOffset = useNotebook((s) => s.setPageOffset);
-  const openSettings = useNotebook((s) => s.setSettingsOpen);
-  const openNewChar = useNewCharacterDialog((s) => s.setOpen);
-  const handwritingOpen = useNotebook((s) => s.handwritingOpen);
-  const setHandwritingOpen = useNotebook((s) => s.setHandwritingOpen);
-
-  const hasCharacters = config.characters.some((c) => !c.archived);
+  const hasCharacters = useNotebook((s) => s.config.characters.some((c) => !c.archived));
   const characterId = "characterId" in view ? view.characterId : null;
   const ch = useNotebook((s) => (characterId ? s.characters[characterId] : null));
+  const name = useNotebook((s) => s.config.characters.find((c) => c.id === characterId)?.name);
+  const handwritingOpen = useNotebook((s) => s.handwritingOpen);
+  const setHandwritingOpen = useNotebook((s) => s.setHandwritingOpen);
+  const openSettings = useNotebook((s) => s.setSettingsOpen);
 
   if (!hasCharacters) {
     return (
-      <div className="layout">
-        <div className="empty-state">
-          <div>
-            <h2>Welcome to Adventurer's Notebook</h2>
-            <p>Create your first character to get started.</p>
-            <div className="actions">
-              <button className="pill primary" onClick={() => openNewChar(true)}>
-                New character
-              </button>
-              <button className="pill ghost" onClick={() => openSettings(true)}>
-                Settings
-              </button>
-            </div>
+      <section className="desk empty-desk">
+        <div className="empty-card">
+          <h2>Welcome to Adventurer's Notebook</h2>
+          <p>Every character gets their own book on the shelf. Add your first one to begin.</p>
+          <div className="form-actions">
+            <button className="pill ghost" onClick={() => openSettings(true)}>
+              Settings
+            </button>
+            <button className="pill primary" onClick={() => useNewCharacterDialog.getState().setOpen(true)}>
+              New character
+            </button>
           </div>
         </div>
-      </div>
+      </section>
     );
   }
 
-  if (!characterId || !ch) {
+  if (!characterId || !ch || ch.status === "loading") {
     return (
-      <div className="layout">
-        <Shelf />
-        <div className="empty-state">
-          <div>
-            <p>Select a character from the shelf.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (ch.status === "loading") {
-    return (
-      <div className="layout">
-        <Shelf />
-        <div className="placeholder-view">
-          Opening {config.characters.find((c) => c.id === characterId)?.name}…
-        </div>
-      </div>
+      <section className="desk empty-desk">
+        <p className="placeholder-view">{characterId ? `Opening ${name ?? "notebook"}…` : "Choose a book from the shelf."}</p>
+      </section>
     );
   }
 
   if (ch.status === "missing") {
     return (
-      <div className="layout">
-        <Shelf />
-        <div className="empty-state">
-          <div>
-            <h2>Folder not found</h2>
-            <p>
-              {ch.notebookPath} is not available. The drive may be unplugged or the folder moved.
-            </p>
-            <div className="actions">
-              <button className="pill primary" onClick={() => openSettings(true)}>
-                Settings
-              </button>
-              <button
-                className="pill ghost"
-                onClick={() => void useNotebook.getState().reloadCharacter(characterId)}
-              >
-                Try again
-              </button>
-            </div>
+      <section className="desk empty-desk">
+        <div className="empty-card">
+          <h2>Folder not found</h2>
+          <p>
+            {ch.notebookPath} is not available. The drive may be unplugged or the folder moved.
+          </p>
+          <div className="form-actions">
+            <button className="pill ghost" onClick={() => useChangeFolder.getState().open(characterId)}>
+              Change folder
+            </button>
+            <button
+              className="pill primary"
+              onClick={() => void useNotebook.getState().reloadCharacter(characterId)}
+            >
+              Try again
+            </button>
           </div>
         </div>
-        <SectionTabs characterId={characterId} />
-      </div>
+      </section>
     );
   }
-
-  // ok status — show spread
-  if (!spread) {
-    return (
-      <div className="layout">
-        <Shelf />
-        <div className="empty-state">
-          <div>
-            <h2>No pages yet</h2>
-            <p>Start the first page.</p>
-            <div className="actions">
-              <button className="pill primary" onClick={() => void useNotebook.getState().newPage()}>
-                New page
-              </button>
-            </div>
-          </div>
-        </div>
-        <SectionTabs characterId={characterId} />
-      </div>
-    );
-  }
-
-  const { left, right } = spread;
-  const handCtx = ch.status === "ok" ? { glyphs: ch.glyphs, hand: ch.character.hand } : null;
-  const activeSection = ch.status === "ok"
-    ? ch.character.sections.find((s) => s.id === ("characterId" in view ? view.sectionId : ""))
-    : null;
-  const isSheetSection = activeSection?.kind === "sheet";
-  const isSessionsSection = activeSection?.kind === "sessions";
 
   return (
-    <HandContext.Provider value={handCtx}>
-      <div className="layout">
-        <Shelf />
-        <div className="cover">
-          <div className="spread">
-            {left && (
-              <div className="spread-page spread-left">
-                <PaperStage
-                  page={left.page}
-                  readOnly={left.readOnly}
-                  notebookPath={ch.notebookPath}
-                  onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
-                  onActivate={() => setPageOffset(0)}
-                />
-                {left.page.sheetPageType && ch.status === "ok" && (
-                  <div className="sheet-overlay">
-                    <SheetPage
-                      page={left.page}
-                      characterId={characterId}
-                      sheet={ch.sheet}
-                      trackers={ch.trackers}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-            {right ? (
-              <div className="spread-page spread-right">
-                <PaperStage
-                  page={right.page}
-                  readOnly={right.readOnly}
-                  notebookPath={ch.notebookPath}
-                  onTitleChange={(title) => updatePage((p) => ({ ...p, title }))}
-                  onActivate={() => setPageOffset(1)}
-                />
-                {right.page.sheetPageType && ch.status === "ok" && (
-                  <div className="sheet-overlay">
-                    <SheetPage
-                      page={right.page}
-                      characterId={characterId}
-                      sheet={ch.sheet}
-                      trackers={ch.trackers}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="spread-page spread-right spread-blank" aria-hidden="true" />
-            )}
-          </div>
-          {isSheetSection && ch.status === "ok" && (
-            <div className="sheet-rest-bar">
-              <button
-                className="small-button sh-rest-btn"
-                onClick={() => void useNotebook.getState().shortRest(characterId)}
-              >
-                Short rest
-              </button>
-              <button
-                className="small-button sh-rest-btn"
-                onClick={() => void useNotebook.getState().longRest(characterId)}
-              >
-                Long rest
-              </button>
-            </div>
-          )}
-          {isSessionsSection && left && (
-            <PreviouslyOnBar
-              characterId={characterId}
-              sectionId={"characterId" in view ? view.sectionId : "sessions"}
-              leftPageId={left.page.id}
-            />
-          )}
-        </div>
-        <SectionTabs characterId={characterId} />
-        {handwritingOpen && ch.status === "ok" && (
-          <HandBuilder
-            characterId={characterId}
-            glyphs={ch.glyphs}
-            hand={ch.character.hand}
-            onClose={() => setHandwritingOpen(false)}
-          />
-        )}
-      </div>
+    <HandContext.Provider value={{ glyphs: ch.glyphs, hand: ch.character.hand }}>
+      <BookView characterId={characterId} />
+      {handwritingOpen && (
+        <HandBuilder
+          characterId={characterId}
+          glyphs={ch.glyphs}
+          hand={ch.character.hand}
+          onClose={() => setHandwritingOpen(false)}
+        />
+      )}
     </HandContext.Provider>
-  );
-}
-
-function PreviouslyOnBar({
-  characterId,
-  sectionId,
-  leftPageId,
-}: {
-  characterId: string;
-  sectionId: string;
-  leftPageId: string;
-}) {
-  const { phase, error, run, reset } = usePreviouslyOn();
-
-  if (phase === "error") {
-    return (
-      <div className="previously-on-bar previously-on-error">
-        <span className="previously-on-msg">{error}</span>
-        <button className="small-button" onClick={reset}>Dismiss</button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="previously-on-bar">
-      <button
-        className="small-button"
-        disabled={phase === "running"}
-        onClick={() => void run(characterId, sectionId, leftPageId)}
-      >
-        {phase === "running" ? "Writing recap…" : phase === "done" ? "Done!" : "Previously on…"}
-      </button>
-    </div>
   );
 }

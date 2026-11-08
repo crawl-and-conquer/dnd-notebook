@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 export type MenuItem = { label: string; onSelect(): void; danger?: boolean };
 
@@ -32,7 +33,7 @@ export function ContextMenu({
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       className="context-menu"
@@ -61,6 +62,7 @@ export function ContextMenu({
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createPage,
+  comparePageFiles,
+  fileNumber,
+  nextFileNumber,
   pageFileName,
   parsePage,
   serialisePage,
@@ -93,6 +96,7 @@ const fullPage: Page = {
       fontSize: 17,
       colour: "#F4F7FF",
       heading: false,
+      font: "hand",
       x: 60,
       y: 140,
       rotation: 0,
@@ -112,6 +116,8 @@ const fullPage: Page = {
         { id: "i1", text: "Pull facet URLs from the crawl", done: true },
         { id: "i2", text: "Brief dev on noindex vs canonical", done: false },
       ],
+      colour: "#2b2622",
+      font: "hand",
     },
     {
       id: "img1",
@@ -199,15 +205,35 @@ describe("file names", () => {
     expect(slugify("???")).toBe("untitled");
   });
 
-  it("builds created-date plus slug", () => {
-    expect(
-      pageFileName({ createdAt: "2026-10-28T12:00:00", title: "Faceted navigation audit" }),
-    ).toBe("2026-10-28-faceted-navigation-audit.page.json");
+  it("numbers pages within their section, then the slug", () => {
+    expect(pageFileName(7, "Faceted navigation audit")).toBe("0007-faceted-navigation-audit.page.json");
+    expect(fileNumber("0012-session-4.page.json")).toBe(12);
+    expect(fileNumber("core-left.page.json")).toBeNull();
+    expect(nextFileNumber(["0001-a.page.json", "0004-b.page.json", "core-left.page.json"])).toBe(5);
+    expect(nextFileNumber([])).toBe(1);
   });
 
   it("avoids clashes", () => {
-    const p = { createdAt: "2026-10-28T12:00:00", title: "Notes" };
-    const taken = new Set(["2026-10-28-notes.page.json", "2026-10-28-notes-2.page.json"]);
-    expect(uniquePageFileName(p, taken)).toBe("2026-10-28-notes-3.page.json");
+    const taken = new Set(["0003-notes.page.json", "0003-notes-2.page.json"]);
+    expect(uniquePageFileName(3, "Notes", taken)).toBe("0003-notes-3.page.json");
+  });
+
+  it("keeps reading order by number, whatever the titles", () => {
+    const p = (fileName: string, createdAt = T, sheetPageType?: Page["sheetPageType"]) => ({
+      fileName,
+      page: { createdAt, sheetPageType },
+    });
+    const files = [
+      p("0010-zebra.page.json"),
+      p("spell-list.page.json", T, "spell-list"),
+      p("0002-apple.page.json"),
+      p("core-left.page.json", T, "core-left"),
+    ];
+    expect(files.sort(comparePageFiles).map((f) => f.fileName)).toEqual([
+      "0002-apple.page.json",
+      "0010-zebra.page.json",
+      "core-left.page.json",
+      "spell-list.page.json",
+    ]);
   });
 });

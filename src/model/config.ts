@@ -100,7 +100,7 @@ export const AppConfigSchema = z.object({
     .object({
       characterId: z.string().optional(),
       sectionId: z.string().optional(),
-      pageId: z.string().optional(),
+      spreadIndex: z.number().int().min(0).optional(),
     })
     .default({}),
   general: z

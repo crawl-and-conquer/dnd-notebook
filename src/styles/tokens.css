@@ -1,96 +1,90 @@
 /*
- * Design tokens. Every colour, radius and size used by the app lives here.
- * Source: SPEC.md "Visual design" and the approved mockups.
+ * Design tokens. Every colour, radius and size the app uses lives here (SPEC: Visual design,
+ * and the mockups in docs/mockups/html). Components use these names only.
  */
 :root {
-  /* Desk / chrome */
+  /* Desk and chrome */
   --desk: #2b2019;
-  --desk-raised: #241b15;
+  --desk-centre: #3b2c22;
+  --desk-edge: #1d1611;
   --chrome: #1c1510;
   --panel: #241b15;
+  --line: rgba(241, 230, 210, 0.08);
+  --line-panel: rgba(241, 230, 210, 0.12);
+  --line-strong: rgba(241, 230, 210, 0.22);
+  --chip: rgba(241, 230, 210, 0.06);
+  --chip-hover: rgba(241, 230, 210, 0.1);
+  --chip-active: rgba(241, 230, 210, 0.14);
+  --scrim: rgba(15, 10, 6, 0.55);
+  --shadow-popover: 0 18px 40px rgba(15, 10, 6, 0.55);
+  --shadow-book: 0 34px 70px rgba(0, 0, 0, 0.5), 0 6px 16px rgba(0, 0, 0, 0.35);
+
+  /* Chrome text */
+  --text: #f1e6d2;
+  --text-soft: #e6d9bf;
+  --text-status: #cdbd9f;
+  --text-muted: #bfae90;
+
+  /* Accents */
+  --gilt: #d4a85a;
+  --gilt-soft: #e8c888;
+  --gilt-wash: rgba(212, 168, 90, 0.22);
+  --ok: #a9cf86;
+  --saved-dot: #8fb36a;
+  --danger: #e07060;
+  --danger-wash: rgba(196, 69, 44, 0.16);
+
+  /* Books */
+  --cover-default: #46562f;
+  --spine-text: #ecd398;
+  --spine-band: rgba(236, 211, 152, 0.55);
 
   /* Paper */
   --paper: #f3e8d0;
-  --paper-margin: #1d1611;
+  --paper-highlight: rgba(255, 251, 238, 0.7);
   --paper-edge: #e4d5b5;
   --paper-edge-mid: #d6c4a0;
   --paper-edge-deep: #cbb892;
-  --rule: rgba(201, 96, 84, 0.30);
+  --rule: rgba(201, 96, 84, 0.3);
   --margin-line: rgba(201, 74, 62, 0.55);
+  --margin-line-thin: rgba(201, 74, 62, 0.32);
+  --gutter-shadow: rgba(110, 70, 25, 0.5);
+  --spine-crease: rgba(90, 60, 30, 0.25);
+  --ink-text: #2b2622;
+  --ink-title: #3a2a1e;
+  --label: #a0493e;
+  --muted-on-paper: #6f5a45;
+  --oxblood: #8e2a2a;
+  --oxblood-ink: #7d2626;
+  --pill-line: rgba(142, 42, 42, 0.45);
+  --pill-wash: rgba(142, 42, 42, 0.06);
+  --sheet-box: #3a2e26;
+  --sheet-box-fill: rgba(255, 250, 236, 0.45);
+  --tab-text: #3a2a1e;
 
-  /* Grid (kept for EN canvas compatibility until M1 reworks canvas) */
-  --grid-minor: rgba(201, 96, 84, 0.08);
-  --grid-major: rgba(201, 96, 84, 0.18);
-  --grid-minor-step: 20px;
-  --grid-major-step: 100px;
+  /* Photos */
+  --photo-print: #f8f4ea;
+  --photo-negative: #17120f;
+  --photo-shadow: rgba(50, 30, 10, 0.28);
+  --photo-caption: #5a4636;
+  --tape: rgba(238, 226, 192, 0.72);
+  --stamp: #ff9b4d;
+  --stamp-glow: rgba(255, 110, 30, 0.95);
+  --edge-print: #ff9b4d;
 
-  /* Text */
-  --ink-white: #f1e6d2;
-  --text: #f1e6d2;
-  --text-soft: #e6d9bf;
-  --text-muted: #bfae90;
-  --tab-idle-text: #bfae90;
-
-  /* Primary accent: gilt gold */
-  --gilt: #d4a85a;
-  --gilt-soft: #e8c888;
-  --gilt-wash: rgba(212, 168, 90, 0.14);
-
-  /* Secondary accents (mapped from EN names; values from DnD ink palette) */
-  --mint: #2d7a7a;
-  --mint-soft: #7ab8b8;
-  --mint-wash: rgba(45, 122, 122, 0.12);
-  --mint-pale: #b0d4d4;
-  --gold: #c9a54a;
-  --gold-soft: #e8c888;
-  --gold-wash: rgba(201, 165, 74, 0.14);
-  --pink: #c4452c;
-  --pink-soft: #e07060;
-  --pink-pale: #f0a090;
-  --pink-wash: rgba(196, 69, 44, 0.12);
-  --pale-blue: #3b5bb5;
-  --pale-blue-soft: #7f9fdf;
-  --pale-blue-wash: rgba(59, 91, 181, 0.14);
-  --ok: #a9cf86;
-
-  /* Character covers */
-  --cover-default: #46562f;
-  --spine-text: #ecd398;
-
-  /* Chrome overlays */
-  --line: rgba(241, 230, 210, 0.08);
-  --line-strong: rgba(241, 230, 210, 0.22);
-  --chip: rgba(241, 230, 210, 0.06);
-  --chip-hover: rgba(241, 230, 210, 0.10);
-  --chip-active: rgba(241, 230, 210, 0.14);
-  --tab-idle: rgba(241, 230, 210, 0.07);
-  --desk-veil: rgba(43, 32, 25, 0.55);
-  --desk-veil-hover: rgba(43, 32, 25, 0.80);
-  --desk-panel: rgba(43, 32, 25, 0.72);
-  --shadow-popover: 0 18px 40px rgba(15, 10, 6, 0.55);
-
-  /* Printer-friendly export */
+  /* Printer-friendly export: white paper, rules and margins at half strength, inks unchanged */
   --print-paper: #ffffff;
-  --print-paper-margin: #ffffff;
-  --print-grid-minor: rgba(100, 70, 40, 0.10);
-  --print-grid-major: rgba(100, 70, 40, 0.25);
-  --print-ink-white: #2b2019;
-  --print-mint: #205555;
-  --print-mint-soft: #205555;
-  --print-gold: #8a6a00;
-  --print-gold-soft: #6a5000;
-  --print-pink: #a03020;
-  --print-pink-pale: #803020;
-  --print-pale-blue: #2a4090;
-  --print-pale-blue-soft: #1a3070;
-  --print-text: #2b2019;
-  --print-text-muted: #7a6050;
-  --print-line-strong: rgba(43, 32, 25, 0.30);
-  --print-gold-wash: rgba(201, 165, 74, 0.15);
-  --print-pale-blue-wash: rgba(42, 64, 144, 0.10);
-  --print-pink-wash: rgba(160, 48, 32, 0.10);
-  --print-muted-wash: rgba(122, 96, 80, 0.10);
-  --print-desk: #ffffff;
+  --print-paper-highlight: rgba(255, 255, 255, 0);
+  --print-rule: rgba(201, 96, 84, 0.15);
+  --print-margin-line: rgba(201, 74, 62, 0.28);
+  --print-margin-line-thin: rgba(201, 74, 62, 0.16);
+  --print-gutter-shadow: rgba(110, 70, 25, 0);
+  --print-ink-text: #2b2622;
+  --print-ink-title: #3a2a1e;
+  --print-label: #a0493e;
+  --print-muted-on-paper: #6f5a45;
+  --print-sheet-box: #3a2e26;
+  --print-sheet-box-fill: rgba(255, 255, 255, 0);
 
   /* Type */
   --font-display: "Alegreya", Georgia, serif;
@@ -99,11 +93,31 @@
   --font-mono: "Share Tech Mono", monospace;
 
   /* Shape and size */
+  --toolbar-h: 64px;
+  --status-h: 40px;
+  --shelf-w: 104px;
   --radius-group: 12px;
   --radius-button: 9px;
   --radius-pill: 30px;
   --radius-popover: 18px;
+  --radius-dialog: 20px;
   --hit: 44px;
   --icon: 20px;
   --focus-ring: 2px solid var(--gilt);
+
+  /* Older names still used by a few panels; they point at the colours above. */
+  --mint: var(--gilt);
+  --mint-soft: var(--gilt-soft);
+  --mint-wash: var(--gilt-wash);
+  --gold: var(--gilt);
+  --gold-soft: var(--gilt-soft);
+  --gold-wash: var(--gilt-wash);
+  --pink: var(--danger);
+  --pink-soft: var(--danger);
+  --pink-wash: var(--danger-wash);
+  --ink-white: var(--text);
+  --desk-raised: var(--panel);
+  --desk-panel: var(--panel);
+  --tab-idle: var(--chip);
+  --tab-idle-text: var(--text-muted);
 }

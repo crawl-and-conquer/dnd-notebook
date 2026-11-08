@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Element } from "../model/page";
 import { useNotebook } from "../store/notebook";
 
@@ -51,7 +52,7 @@ export function PhotoMenu({
   const leftPx = Math.min(x, window.innerWidth - 280);
   const topPx = Math.min(y, window.innerHeight - 320);
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       className="photo-menu"
@@ -102,6 +103,7 @@ export function PhotoMenu({
       />
 
       <button className="photo-menu-apply" onClick={commitText}>Apply</button>
-    </div>
+    </div>,
+    document.body,
   );
 }

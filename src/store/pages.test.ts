@@ -102,7 +102,8 @@ describe("page list actions", () => {
     const { charId, pages } = char();
     expect(await useNotebook.getState().deletePage(charId, SECTION, pages[0].page.id)).toBe(true);
     expect(char().pages).toEqual([]);
-    expect(currentPageOf(useNotebook.getState())).toBeNull();
+    // An empty section shows blank paper that becomes a page when written on.
+    expect(currentPageOf(useNotebook.getState())?.loaded.virtual).toBe(true);
     expect(await files()).toEqual([]);
   });
 });

@@ -50,6 +50,8 @@ export const SectionSchema = z.object({
 export const CHARACTER_SCHEMA_VERSION = 1 as const;
 
 export const CharacterSchema = z.object({
+  /** Marks the folder as this app's; the Rust side refuses to touch folders without it. */
+  app: z.literal("dnd-notebook").default("dnd-notebook"),
   schemaVersion: z.literal(CHARACTER_SCHEMA_VERSION),
   id: z.string().min(1),
   name: z.string().min(1),
@@ -71,11 +73,16 @@ export const CharacterSchema = z.object({
 export type Section = z.infer<typeof SectionSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
 
-export function createCharacter(name: string, cover: string, now = new Date()): Character {
+export function createCharacter(
+  name: string,
+  cover: string,
+  now = new Date(),
+  id: string = newId(),
+): Character {
   const iso = now.toISOString();
   return CharacterSchema.parse({
     schemaVersion: 1,
-    id: newId(),
+    id,
     name,
     cover,
     sections: DEFAULT_SECTIONS.map((s) => ({ ...s, pageOrder: [] })),
@@ -92,6 +99,62 @@ export function parseCharacter(text: string): Character | null {
     return null;
   }
 }
+
+/**
+ * Reads `character.json`, upgrading the short marker file older builds wrote (name and cover
+ * only) to a full character with the default sections. `changed` says whether to write it back.
+ */
+export function readCharacter(
+  text: string | null,
+  fallback: { id: string; name: string; cover: string },
+  now = new Date(),
+): { character: Character; changed: boolean } {
+  const parsed = text ? parseCharacter(text) : null;
+  if (parsed) return { character: parsed, changed: false };
+  let raw: Record<string, unknown> = {};
+  try {
+    const v = text ? JSON.parse(text) : null;
+    if (v && typeof v === "object") raw = v as Record<string, unknown>;
+  } catch {
+    // unreadable: rebuild from the app config
+  }
+  const str = (v: unknown, d: string) => (typeof v === "string" && v ? v : d);
+  const base = createCharacter(
+    str(raw.name, fallback.name),
+    str(raw.cover, fallback.cover),
+    now,
+    str(raw.id, fallback.id),
+  );
+  const sections = Array.isArray(raw.sections)
+    ? raw.sections.flatMap((s) => {
+        const r = SectionSchema.safeParse(s);
+        return r.success ? [r.data] : [];
+      })
+    : [];
+  return {
+    character: { ...base, sections: sections.length ? sections : base.sections },
+    changed: true,
+  };
+}
+
+/** A new section's id: a slug of its name plus a short random tail, safe as a folder name. */
+export function newSectionId(name: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  const slug =
+    name
+      .normalize("NFKD")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "section";
+  for (;;) {
+    const id = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+/** Paper colours offered for new and recoloured section tabs. */
+export const SECTION_TAB_COLOURS = Object.values(DEFAULT_SECTION_TAB_COLOURS);
 
 export function serialiseCharacter(ch: Character): string {
   return JSON.stringify(ch, null, 2) + "\n";

@@ -21,10 +21,12 @@ function char() {
 const byTitle = (title: string) => char().pages.find((p) => p.page.title === title);
 const writeOutside = (fileName: string, text: string) =>
   backend.writeTextAtomic(pagePath(NOTEBOOK, SECTION, fileName), text);
-const changed = (...files: string[]) => state().applyOutsideChanges(NOTEBOOK, files);
+// The watcher reports <section>/<file>.
+const changed = (...files: string[]) =>
+  state().applyOutsideChanges(NOTEBOOK, files.map((f) => `${SECTION}/${f}`));
 
 async function addPage(title: string, at: string): Promise<{ fileName: string; page: Page }> {
-  await state().newPage();
+  await state().newSpread();
   const { charId, pages } = char();
   const last = pages[pages.length - 1];
   state().updatePageIn(charId, SECTION, last.page.id, (p) => ({ ...p, title, createdAt: at }));
@@ -72,8 +74,9 @@ describe("changes made outside the app", () => {
           text: "Added on the laptop",
           w: 200,
           fontSize: 16,
-          colour: "#F4F7FF",
+          colour: "#2b2622",
           heading: false,
+          font: "hand",
         },
       ],
       updatedAt: "2026-11-06T10:00:00.000Z",

@@ -21,12 +21,17 @@ export function drawOrder(elements: Element[]): Element[] {
   return [...elements.filter(isBrush), ...elements.filter((el) => !isBrush(el))];
 }
 
-/** Ruled paper background: warm beige, red rules every 32 px, double margin line. */
+/** The first rule sits at y 95 (the header band above it has none); then every 32 px. */
+export const FIRST_RULE_Y = 95;
+
+/** Ruled paper: warm beige with a soft highlight, red rules every 32 px, double margin line. */
 export function PaperBackground() {
   const t = useCanvasTheme();
   const paper = t.token("--paper");
+  const highlight = t.token("--paper-highlight");
   const rule = t.token("--rule");
-  const marginLine = t.token("--margin-line");
+  const margin = t.token("--margin-line");
+  const marginThin = t.token("--margin-line-thin");
   return (
     <>
       <Rect x={0} y={0} width={PAGE_WIDTH} height={PAGE_HEIGHT} fill={paper} listening={false} />
@@ -35,24 +40,32 @@ export function PaperBackground() {
         perfectDrawEnabled={false}
         sceneFunc={(ctx) => {
           const c = ctx._context;
-          // Red ruled lines every 32 px, starting below the header
+          // Soft light from the top left, fading out by 70% of the way across.
+          if (highlight && !/,\s*0\)$/.test(highlight)) {
+            const cx = PAGE_WIDTH * 0.35;
+            const cy = PAGE_HEIGHT * 0.25;
+            const g = c.createRadialGradient(cx, cy, 0, cx, cy, PAGE_HEIGHT * 0.7);
+            g.addColorStop(0, highlight);
+            g.addColorStop(1, "rgba(236,220,186,0)");
+            c.fillStyle = g;
+            c.fillRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT);
+          }
           c.beginPath();
           c.strokeStyle = rule;
           c.lineWidth = 1;
-          for (let y = HEADER_H + RULE_STEP; y < PAGE_HEIGHT; y += RULE_STEP) {
+          for (let y = FIRST_RULE_Y; y < PAGE_HEIGHT; y += RULE_STEP) {
             c.moveTo(0, y + 0.5);
             c.lineTo(PAGE_WIDTH, y + 0.5);
           }
           c.stroke();
-          // Double margin line: thick at x=71, thin at x=75
           c.beginPath();
-          c.strokeStyle = marginLine;
+          c.strokeStyle = margin;
           c.lineWidth = 1.5;
-          c.moveTo(MARGIN_X1 + 0.5, 0);
-          c.lineTo(MARGIN_X1 + 0.5, PAGE_HEIGHT);
+          c.moveTo(MARGIN_X1 + 0.75, 0);
+          c.lineTo(MARGIN_X1 + 0.75, PAGE_HEIGHT);
           c.stroke();
           c.beginPath();
-          c.strokeStyle = marginLine.replace("0.55", "0.32");
+          c.strokeStyle = marginThin;
           c.lineWidth = 1;
           c.moveTo(MARGIN_X2 + 0.5, 0);
           c.lineTo(MARGIN_X2 + 0.5, PAGE_HEIGHT);
