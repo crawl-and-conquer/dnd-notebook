@@ -123,6 +123,8 @@ export const PageSchema = z.object({
   sheetPageType: z
     .enum(["core-left", "core-right", "features", "spells-kit", "spell-list"])
     .optional(),
+  /** Which spell-list page this is (0 for the first), when the list runs over several pages. */
+  sheetIndex: z.number().int().min(0).optional(),
   createdAt: isoDateTime,
   updatedAt: isoDateTime,
   elements: z.array(ElementSchema),

@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type ReactNode,
 } from "react";
 import { Group, Layer, Rect, Stage, Transformer } from "react-konva";
 import { PAGE_HEIGHT, PAGE_WIDTH, type Element, type Page } from "../model/page";
@@ -32,6 +33,7 @@ import { PaperBackground, drawOrder } from "./PageScene";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { PhotoMenu } from "../components/PhotoMenu";
 import { useExportDialog } from "../components/ExportDialog";
+import { useImportDialog } from "../components/ImportDialog";
 
 const ERASER_RADIUS = 6;
 
@@ -58,6 +60,8 @@ type Props = {
   onActivate?(): void;
   /** Sheet pages draw their own template instead of ruled paper. */
   paper?: boolean;
+  /** Drawn over the paper and under the writing (the character sheet templates). */
+  underlay?: ReactNode;
 };
 
 const isTyping = (t: EventTarget | null) =>
@@ -68,7 +72,7 @@ const isTyping = (t: EventTarget | null) =>
  * One page of the spread: a Konva stage the exact size of the page (570 x 720). Zoom and
  * pan belong to the spread (BookView), which scales the whole book with a CSS transform.
  */
-export function PaperStage({ page, readOnly, notebookPath, active, onActivate, paper = true }: Props) {
+export function PaperStage({ page, readOnly, notebookPath, active, onActivate, paper = true, underlay }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -510,6 +514,9 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
     // Middle-drag and Space-drag pan the spread; BookView handles those.
     if (evt.button === 1 || useTools.getState().panMode) return;
     onActivate?.();
+    // Sheet bubbles toggle with any tool; with the Text tool a sheet value opens its editor.
+    const hit = e.target.name();
+    if (hit === "sheet-bubble" || (hit === "sheet-value" && tool === "text")) return;
     if (evt.button !== 0 || readOnly || editing) return;
     const p = toPage();
     if (!p) return;
@@ -677,6 +684,12 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (readOnly) return;
+    // A PDF dropped on the book is a character sheet to import.
+    const pdf = [...e.dataTransfer.files].find((f) => f.type === "application/pdf" || /.pdf$/i.test(f.name));
+    if (pdf) {
+      useImportDialog.getState().openWith(pdf);
+      return;
+    }
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
     const at = toPage(e.nativeEvent) ?? viewCentre();
     void (async () => {
@@ -797,6 +810,7 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
           el={el}
           notebookPath={notebookPath}
           draggable={draggable}
+          listening={tool === "select" || tool === "eraser"}
           hidden={editingId === el.id}
           dragBoundFunc={el.type === "text" || el.type === "checklist" ? textDragBound : dragBound}
           onDragEnd={onDragEnd}
@@ -811,6 +825,7 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
       editingId,
       dragBound,
       textDragBound,
+      tool,
       onDragEnd,
       onDblClick,
       onToggleItem,
@@ -818,7 +833,6 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
     ],
   );
 
-  const interactive = tool === "select" || tool === "eraser";
   const cursor = panMode
     ? "grab"
     : tool === "select"
@@ -852,9 +866,10 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
         onContextMenu={onContextMenu}
       >
         {/* Two layers only: each layer is a full-size canvas the browser composites every frame. */}
-        <Layer ref={layerRef} listening={interactive}>
+        <Layer ref={layerRef}>
           <Group>
             {paper && <PaperBackground />}
+            {underlay}
             {elementNodes}
           </Group>
         </Layer>

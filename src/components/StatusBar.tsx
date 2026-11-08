@@ -112,7 +112,7 @@ export function StatusBar() {
           {jumps?.next ? `Session ${jumps.next.number}` : "Next"}
           <ChevronRightIcon size={14} />
         </button>
-        {pages.length > 0 && (
+        {pages.length > 0 && section?.kind !== "sheet" && (
           <button
             className="sb"
             title={isSessions ? "Start the next session on a new spread" : "Add a spread at the end of this section"}

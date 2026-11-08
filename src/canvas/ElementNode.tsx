@@ -55,6 +55,8 @@ type Props = {
   notebookPath: string;
   draggable: boolean;
   hidden: boolean;
+  /** False while drawing, so pen strokes start on top of existing writing. */
+  listening?: boolean;
   dragBoundFunc?: (pos: Konva.Vector2d) => Konva.Vector2d;
   onDragEnd?: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onDblClick?: (id: string) => void;
@@ -71,6 +73,7 @@ function ElementNodeImpl(p: Props) {
       y={el.y}
       rotation={el.rotation}
       draggable={p.draggable}
+      listening={p.listening ?? true}
       visible={!p.hidden}
       dragBoundFunc={p.dragBoundFunc}
       onDragEnd={p.onDragEnd}

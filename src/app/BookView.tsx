@@ -6,7 +6,8 @@ import { PAGE_HEIGHT, PAGE_WIDTH } from "../model/page";
 import { currentSpreadPages, useNotebook, type ShownPage } from "../store/notebook";
 import { MAX_ZOOM, MIN_ZOOM, useTools } from "../store/tools";
 import { SectionTabs } from "../components/SectionTabs";
-import { SheetPage } from "../sheet/SheetPage";
+import { SheetTemplate } from "../sheet/SheetTemplate";
+import { SheetHeaderControls, SheetValueEditor, useSheetEdit } from "../sheet/SheetChrome";
 
 /** The book in page units: a 10 px cover around two pages, tabs sticking out on the right. */
 const COVER = 10;
@@ -247,7 +248,24 @@ function PageView({
   onActivate(): void;
 }) {
   const ch = useNotebook((s) => s.characters[characterId]);
+  const name = useNotebook((s) => s.config.characters.find((c) => c.id === characterId)?.name ?? "");
   const sheetType = shown.page.sheetPageType;
+  const pageId = shown.page.id;
+  const underlay =
+    sheetType && ch?.status === "ok" ? (
+      <SheetTemplate
+        type={sheetType}
+        index={shown.page.sheetIndex ?? 0}
+        sheet={ch.sheet}
+        trackers={ch.trackers}
+        characterName={name}
+        onEdit={(hit) => {
+          if (shown.readOnly) return;
+          useSheetEdit.getState().open({ characterId, pageId, hit });
+        }}
+        onBubble={(act) => void useNotebook.getState().toggleSheetBubble(characterId, act)}
+      />
+    ) : undefined;
   return (
     <article
       className={`page ${side}${active ? " active" : ""}${shown.virtual ? " blank" : ""}`}
@@ -259,6 +277,7 @@ function PageView({
         notebookPath={notebookPath}
         active={active}
         onActivate={onActivate}
+        underlay={underlay}
       />
       {!sheetType && (
         <PageHeader
@@ -270,11 +289,8 @@ function PageView({
           sessions={sessions}
         />
       )}
-      {sheetType && ch?.status === "ok" && (
-        <div className="sheet-overlay" onPointerDown={onActivate}>
-          <SheetPage page={shown.page} characterId={characterId} sheet={ch.sheet} trackers={ch.trackers} />
-        </div>
-      )}
+      {sheetType && <SheetValueEditor pageId={pageId} />}
+      {sheetType && side === "r" && <SheetHeaderControls characterId={characterId} />}
     </article>
   );
 }
@@ -332,10 +348,8 @@ function PageHeader({
 
   const session = page.session;
   const pill =
-    sessions && sheet && (sheet.charClass || sheet.hp.max > 0)
-      ? [sheet.charClass && `${sheet.charClass} ${sheet.level}`, sheet.hp.max > 0 && `${sheet.hp.max} HP`]
-          .filter(Boolean)
-          .join(" · ")
+    sessions && sheet && (sheet.identity.classLevel || sheet.combat.maxHp !== null)
+      ? [sheet.identity.classLevel, sheet.combat.maxHp !== null && `${sheet.combat.maxHp} HP`].filter(Boolean).join(" · ")
       : null;
 
   return (

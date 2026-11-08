@@ -10,7 +10,6 @@ import {
   fileNumber,
   newId,
   nextFileNumber,
-  pageFileName,
   parsePage,
   serialisePage,
   slugify,
@@ -34,9 +33,14 @@ import {
   serialiseSheet,
   serialiseTrackers,
   SHEET_PAGE_TYPES,
+  longRest as longRestRule,
+  shortRest as shortRestRule,
   type SheetData,
   type TrackerState,
+  overrideValue,
+  setPath,
 } from "../model/sheet";
+import { spellListPageCount, type Bubble } from "../sheet/layout";
 import {
   emptyHistory,
   record,
@@ -147,6 +151,14 @@ type NotebookStore = {
   saveGlyphs(characterId: string, glyphs: GlyphsData): Promise<void>;
   updateHandSettings(characterId: string, hand: Character["hand"]): Promise<void>;
   setSheetData(characterId: string, sheet: SheetData): Promise<void>;
+  /** A value typed on a sheet page: saved to sheet.json as an override, or to trackers.json for HP. */
+  editSheetValue(characterId: string, path: string, text: string): Promise<void>;
+  /** A bubble clicked on a sheet page: slots, uses, hit dice, death saves or a prepared spell. */
+  toggleSheetBubble(characterId: string, act: Bubble): Promise<void>;
+  /** Adds any sheet pages the sheet needs that the section does not have yet. */
+  syncSheetPages(characterId: string): Promise<void>;
+  /** The page at this position in a section, creating it (and any blank pages before it) if needed. */
+  ensurePage(characterId: string, sectionId: string, index: number): Promise<LoadedPage | null>;
   updateTrackers(characterId: string, mutate: (t: TrackerState) => TrackerState): Promise<void>;
   longRest(characterId: string): Promise<void>;
   shortRest(characterId: string): Promise<void>;
@@ -748,29 +760,16 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const sheet: SheetData = sheetText ? parseSheetData(sheetText) : emptySheetData();
       const trackersText = await readOptional(trackersPath(notebookPath));
       const trackers: TrackerState = trackersText
-        ? parseTrackers(trackersText, sheet.hp.max)
-        : emptyTrackers(sheet.hp.max);
+        ? parseTrackers(trackersText)
+        : emptyTrackers();
 
-      // The sheet section always holds its template pages.
+      // The sheet section always holds its template pages (and enough spell-list pages).
       const sectionPages = { ...result.sectionPages };
       const sheetSection = character.sections.find((s) => s.kind === "sheet");
-      if (sheetSection && (sectionPages[sheetSection.id] ?? []).length === 0) {
-        const now = new Date().toISOString();
-        const created: LoadedPage[] = SHEET_PAGE_TYPES.map((type, i) => {
-          const page: Page = {
-            schemaVersion: 1,
-            id: newId(),
-            title: SHEET_TITLES[type],
-            section: sheetSection.id,
-            sheetPageType: type,
-            createdAt: now,
-            updatedAt: now,
-            elements: [],
-          };
-          return { fileName: pageFileName(i + 1, page.title), page, readOnly: false };
-        });
-        sectionPages[sheetSection.id] = created;
-        for (const lp of created) {
+      if (sheetSection) {
+        const added = sheetPagesToAdd(sectionPages[sheetSection.id] ?? [], sheet, sheetSection.id);
+        sectionPages[sheetSection.id] = [...(sectionPages[sheetSection.id] ?? []), ...added];
+        for (const lp of added) {
           try {
             await savePage(notebookPath, sheetSection.id, lp.fileName, lp.page);
           } catch {
@@ -973,46 +972,15 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     async longRest(characterId) {
       const ch = okState(characterId);
       if (!ch) return;
-      const { sheet } = ch;
       restUndo.set(characterId, [...(restUndo.get(characterId) ?? []), ch.trackers]);
-      await get().updateTrackers(characterId, (t) => ({
-        ...t,
-        currentHp: sheet.hp.max,
-        tempHp: 0,
-        usedSpellSlots: [],
-        usedHitDice: 0,
-        deathSavesSuccess: 0,
-        deathSavesFail: 0,
-        usedFeatures: Object.fromEntries(
-          Object.entries(t.usedFeatures).filter(([id]) => {
-            const feat = sheet.features.find((f) => f.id === id);
-            return !!feat?.uses && feat.uses.restoreOn !== "long" && feat.uses.restoreOn !== "short";
-          }),
-        ),
-      }));
+      await get().updateTrackers(characterId, (tr) => longRestRule(tr, ch.sheet));
     },
 
     async shortRest(characterId) {
       const ch = okState(characterId);
       if (!ch) return;
-      const { sheet } = ch;
       restUndo.set(characterId, [...(restUndo.get(characterId) ?? []), ch.trackers]);
-      await get().updateTrackers(characterId, (t) => ({
-        ...t,
-        usedFeatures: Object.fromEntries(
-          Object.entries(t.usedFeatures)
-            .map(([id, used]) => {
-              const feat = sheet.features.find((f) => f.id === id);
-              if (!feat?.uses) return [id, used];
-              if (feat.uses.restoreOn === "short") return [id, 0];
-              if (feat.uses.partialRestoreOn === "short" && feat.uses.partialAmount !== undefined) {
-                return [id, Math.max(0, used - feat.uses.partialAmount)];
-              }
-              return [id, used];
-            })
-            .filter(([, used]) => (used as number) > 0),
-        ),
-      }));
+      await get().updateTrackers(characterId, (tr) => shortRestRule(tr, ch.sheet));
     },
 
     async undoRest(characterId) {
@@ -1020,6 +988,65 @@ export const useNotebook = create<NotebookStore>((set, get) => {
       const prev = stack?.pop();
       if (!prev) return;
       await get().updateTrackers(characterId, () => prev);
+    },
+
+    async editSheetValue(characterId, path, text) {
+      const ch = okState(characterId);
+      if (!ch) return;
+      if (path.startsWith("trackers.")) {
+        const sub = path.slice("trackers.".length);
+        const t2 = text.trim().replace(/[−–]/g, "-");
+        const n = t2 === "" || t2 === "—" ? null : Number(t2);
+        if (n !== null && !Number.isFinite(n)) return;
+        await get().updateTrackers(characterId, (tr) => setPath(tr, sub, n));
+        return;
+      }
+      await get().setSheetData(characterId, overrideValue(ch.sheet, path, text));
+    },
+
+    async toggleSheetBubble(characterId, act) {
+      const ch = okState(characterId);
+      if (!ch) return;
+      const step = (spent: number, i: number) => (i < spent ? i : i + 1);
+      if (act.kind === "prepared") {
+        const spell = ch.sheet.spellcasting?.spells[act.spell];
+        if (!spell || spell.prepared === "always") return;
+        const path = `spellcasting.spells.${act.spell}.prepared`;
+        const next = setPath(ch.sheet, path, spell.prepared === "yes" ? "no" : "yes");
+        await get().setSheetData(characterId, {
+          ...next,
+          overrides: next.overrides.includes(path) ? next.overrides : [...next.overrides, path],
+        });
+        return;
+      }
+      await get().updateTrackers(characterId, (tr) => {
+        switch (act.kind) {
+          case "slot":
+            return { ...tr, slotsSpent: { ...tr.slotsSpent, [act.level]: step(tr.slotsSpent[act.level] ?? 0, act.i) } };
+          case "feature":
+            return { ...tr, featureUses: { ...tr.featureUses, [act.key]: step(tr.featureUses[act.key] ?? 0, act.i) } };
+          case "hitdie":
+            return { ...tr, hitDiceSpent: step(tr.hitDiceSpent, act.i) };
+          case "death":
+            return { ...tr, deathSaves: { ...tr.deathSaves, [act.which]: step(tr.deathSaves[act.which], act.i) } };
+        }
+      });
+    },
+
+    async ensurePage(characterId, sectionId, index) {
+      await backend.ensureNotebookDir(okState(characterId)?.notebookPath ?? "", `pages/${sectionId}`).catch(() => undefined);
+      return materialise(characterId, sectionId, index);
+    },
+
+    async syncSheetPages(characterId) {
+      const ch = okState(characterId);
+      const section = ch?.character.sections.find((s) => s.kind === "sheet");
+      if (!ch || !section) return;
+      const added = sheetPagesToAdd(ch.sectionPages[section.id] ?? [], ch.sheet, section.id);
+      if (!added.length) return;
+      const pages = [...(ch.sectionPages[section.id] ?? []), ...added].sort(comparePageFiles);
+      setPages(characterId, section.id, pages);
+      for (const lp of added) await savePage(ch.notebookPath, section.id, lp.fileName, lp.page).catch(() => undefined);
     },
 
     canUndoRest(characterId) {
@@ -1291,6 +1318,37 @@ export const useNotebook = create<NotebookStore>((set, get) => {
     set((s) => ({ historyTick: s.historyTick + 1 }));
   }
 });
+
+/** Sheet pages the section is missing: the four core templates and enough spell-list pages. */
+function sheetPagesToAdd(existing: LoadedPage[], sheet: SheetData, sectionId: string): LoadedPage[] {
+  const have = new Set(existing.map((p) => `${p.page.sheetPageType}:${p.page.sheetIndex ?? 0}`));
+  const want: { type: (typeof SHEET_PAGE_TYPES)[number]; index: number }[] = [
+    ...SHEET_PAGE_TYPES.filter((x) => x !== "spell-list").map((type) => ({ type, index: 0 })),
+    ...Array.from({ length: spellListPageCount(sheet) }, (_, index) => ({ type: "spell-list" as const, index })),
+  ];
+  const taken = new Set(existing.map((p) => p.fileName));
+  let number = nextFileNumber(taken);
+  const now = new Date().toISOString();
+  const out: LoadedPage[] = [];
+  for (const w of want) {
+    if (have.has(`${w.type}:${w.index}`)) continue;
+    const page: Page = {
+      schemaVersion: 1,
+      id: newId(),
+      title: w.index ? `${SHEET_TITLES[w.type]}, cont.` : SHEET_TITLES[w.type],
+      section: sectionId,
+      sheetPageType: w.type,
+      ...(w.type === "spell-list" ? { sheetIndex: w.index } : {}),
+      createdAt: now,
+      updatedAt: now,
+      elements: [],
+    };
+    const fileName = uniquePageFileName(number++, page.title, taken);
+    taken.add(fileName);
+    out.push({ fileName, page, readOnly: false });
+  }
+  return out;
+}
 
 const SHEET_TITLES: Record<(typeof SHEET_PAGE_TYPES)[number], string> = {
   "core-left": "Character",
