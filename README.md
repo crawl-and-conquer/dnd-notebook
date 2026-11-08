@@ -9,14 +9,14 @@ Built with Tauri 2, React 18, TypeScript and Konva. See [SPEC.md](SPEC.md) for t
 | Milestone | State |
 | --- | --- |
 | M0 Fork and rename | Done |
-| M1 Notebook shell | Pending |
-| M2 Tools and inks | Pending |
-| M3 Photos | Pending |
-| M4 Handwriting builder | Pending |
-| M5 Character sheet | Pending |
-| M6 Import | Pending |
-| M7 Export and release | Pending |
-| M8 AI recap | Pending |
+| M1 Notebook shell | Done |
+| M2 Tools and inks | Done |
+| M3 Photos | Done |
+| M4 Handwriting builder | Done |
+| M5 Character sheet | Done |
+| M6 Import | Done |
+| M7 Export and release | Done |
+| M8 AI recap | Done |
 
 ## Prerequisites
 
