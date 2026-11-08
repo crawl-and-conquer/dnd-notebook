@@ -1,5 +1,5 @@
 import { getStroke } from "perfect-freehand";
-import { newId, type ChecklistItem, type Element } from "../model/page";
+import { PAGE_WIDTH, newId, type ChecklistItem, type Element } from "../model/page";
 import { snap } from "./geometry";
 
 type ElementOf<T extends Element["type"]> = Extract<Element, { type: T }>;
@@ -96,6 +96,12 @@ export function makeShape(
   return type === "rect" ? { ...base, type: "rect" } : { ...base, type: "ellipse" };
 }
 
+/** Right edge of the writing area, matching the page header's right padding. */
+export const WRITING_RIGHT = PAGE_WIDTH - 36;
+
+/** A new text box keeps to the page: as wide as its style, but never past the right edge. */
+export const fitWidth = (x: number, w: number) => Math.max(80, Math.min(w, WRITING_RIGHT - x));
+
 export function makeText(
   x: number,
   y: number,
@@ -112,7 +118,7 @@ export function makeText(
     y,
     rotation: 0,
     text,
-    w: s.w,
+    w: fitWidth(x, s.w),
     fontSize: s.fontSize,
     colour,
     heading,
@@ -134,7 +140,7 @@ export function makeChecklist(
     x,
     y,
     rotation: 0,
-    w: TEXT_STYLE.checklist.w,
+    w: fitWidth(x, TEXT_STYLE.checklist.w),
     items: texts.map((text) => ({ id: newId(), text, done: false })),
     colour,
     font: "hand",

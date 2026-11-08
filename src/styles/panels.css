@@ -89,7 +89,7 @@
   flex: 1;
   display: grid;
   grid-template-columns: 560px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 196px;
+  grid-template-rows: minmax(0, 1fr) 224px;
   gap: 20px;
   padding: 22px 24px;
   min-height: 0;

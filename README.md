@@ -1,6 +1,6 @@
 # Adventurer's Notebook
 
-A desktop D&D character notebook. It looks like a paper notebook (parchment pages, ink-on-paper grid), keeps each character's pages as JSON files in that character's own folder, and provides a canvas for freehand notes, sketches and character sheets.
+A desktop notebook for D&D characters that looks like a paper notebook: a two-page spread on a wooden desk, ruled beige paper, and divider tabs for Sessions, Backstory, Likes, Dislikes, Wants, Notes and Character sheet. Each character has their own book, their own handwriting (drawn letter by letter in a builder), and their pages are JSON files in a folder you choose. A D&D Beyond character sheet PDF can be imported to draw the sheet as notebook pages and fill the other tabs.
 
 Built with Tauri 2, React 18, TypeScript and Konva. See [SPEC.md](SPEC.md) for the full spec and [CLAUDE.md](CLAUDE.md) for working rules.
 
@@ -54,47 +54,31 @@ npm test
 npm run test:rust
 ```
 
-### End-to-end checks
+### End-to-end check
 
-They run against the real app using scratch folders under `test-fixtures/_scratch` (git-ignored). Start the app as above, then in a second terminal:
+`npm run e2e` builds nothing; it launches an already built app (`src-tauri/target/release/dnd-notebook.exe` by default, or the path in `DND_NOTEBOOK_EXE`) with its own app data folder and a character folder under `test-fixtures/_scratch/e2e`, then drives it over WebView2's debugging port: new character, import of the reference PDF, writing, an outside change to a page file, Previously on... without AI set up, export, change folder and the handwriting builder. Close the installed app first.
 
 ```bash
-npm run e2e:m1
+npx tauri build --no-bundle
 ```
 
-`e2e:pages` covers the page list: open, rename, duplicate and delete. Start the app with `DND_NOTEBOOK_APP_DIR` set to `test-fixtures\_scratch\appdata-pages`, then:
-
 ```bash
-npm run e2e:pages
-```
-
-`e2e:watch` edits, adds and removes page files on disk while the app is open and checks the app follows along. Start the app with `DND_NOTEBOOK_APP_DIR` set to `test-fixtures\_scratch\appdata-watch`, then:
-
-```bash
-npm run e2e:watch
-```
-
-`e2e:tabs` covers the tab right-click menu, dragging and Alt+arrow keys to reorder tabs, reordering in Settings, and restoring archived tabs. Start the app with `DND_NOTEBOOK_APP_DIR` set to `test-fixtures\_scratch\appdata-tabs`, then:
-
-```bash
-npm run e2e:tabs
-```
-
-`e2e:move` covers Change folder: moving existing notes and pointing at a new folder. Start the app with `DND_NOTEBOOK_APP_DIR` set to `test-fixtures\_scratch\appdata-move`, then:
-
-```bash
-npm run e2e:move
+npm run e2e
 ```
 
 ## Files on disk
 
-Each character folder gets a `notes` folder:
+Each character folder gets a `notebook` folder:
 
 ```
-<character folder>/notes/
-  notebook.json
-  pages/2026-11-06-session-notes.page.json
-  assets/<sha256>.png
+<character folder>/notebook/
+  character.json          name, cover colour, sections, hand settings
+  sheet.json              character sheet data (imported or typed in)
+  trackers.json           HP, spent slots, feature uses, hit dice, death saves
+  hand/hand.json          the character's drawn letters
+  pages/<section>/0001-session-1.page.json
+  assets/<sha256>.png     photos, de-duplicated by hash
+  imports/<date>-<name>.pdf   a copy of each imported sheet
 ```
 
 Pages save 800 ms after the last change, as an atomic write (temp file, then rename), keeping one `.bak` of the previous version. App settings live in `%APPDATA%\dnd-notebook\config.json`. API keys live in Windows Credential Manager (entry `dnd-notebook`), never in a file.
@@ -111,7 +95,7 @@ The app checks for new versions when it opens (Settings › General › Check fo
 2. Commit, then tag and push:
 
 ```bash
-git tag v0.1.0
+git tag v0.2.0
 ```
 
 ```bash
@@ -120,7 +104,6 @@ git push origin main --tags
 
 3. The `release` workflow builds the installer on `windows-latest`, signs the updater files and attaches everything, including `latest.json`, to a **draft** release.
 4. Check the draft, then publish it. Installed apps only see published releases.
-5. Optional: with an older version installed, `npm run e2e:update` opens it, accepts the update prompt and checks it restarts on the new version.
 
 ### Updater signing key
 
