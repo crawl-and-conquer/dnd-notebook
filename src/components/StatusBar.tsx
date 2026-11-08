@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { currentSpreadPages, useNotebook, type SaveState } from "../store/notebook";
 import { useTools } from "../store/tools";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "./Icons";
+import { drawnCount } from "../model/hand";
 import { PageList, PAGE_LIST_TOGGLE } from "./PageList";
 
 function saveLabel(s: SaveState, now: number): string {
@@ -62,7 +63,7 @@ export function StatusBar() {
   const pages = ok && sectionId ? (ok.sectionPages[sectionId] ?? []) : [];
   const section = ok?.character.sections.find((s) => s.id === sectionId);
   const isSessions = section?.kind === "sessions";
-  const handDrawn = ok ? Object.values(ok.glyphs).filter((v) => v.some((s) => s.length)).length : 0;
+  const handDrawn = ok ? drawnCount(ok.glyphs) : 0;
 
   let pager = null;
   if (spread) {

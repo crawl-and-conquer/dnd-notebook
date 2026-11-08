@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { HandContext } from "../canvas/HandContext";
+import { HandContext, useWatchFonts } from "../canvas/HandContext";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { StatusBar } from "../components/StatusBar";
 import { Shelf } from "../components/Shelf";
@@ -64,6 +64,7 @@ export function App() {
   const init = useNotebook((s) => s.init);
   const notice = useNotebook((s) => s.notice);
   const dismissNotice = useNotebook((s) => s.dismissNotice);
+  useWatchFonts();
 
   useEffect(() => {
     void init();

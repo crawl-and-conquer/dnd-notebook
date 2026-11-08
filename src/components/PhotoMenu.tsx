@@ -19,7 +19,12 @@ export function PhotoMenu({
   const ref = useRef<HTMLDivElement>(null);
   const editElements = useNotebook((s) => s.editElements);
 
-  const [stamp, setStamp] = useState(el.stamp);
+  const today = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const [stamp, setStamp] = useState(
+    el.stamp || `'${String(today.getFullYear()).slice(2)} ${p2(today.getMonth() + 1)} ${p2(today.getDate())}`,
+  );
+  const [showStamp, setShowStamp] = useState(!!el.stamp);
   const [caption, setCaption] = useState(el.caption);
 
   useEffect(() => {
@@ -45,7 +50,7 @@ export function PhotoMenu({
   }
 
   function commitText() {
-    patch({ stamp, caption });
+    patch({ stamp: showStamp ? stamp.trim() : "", caption });
     onClose();
   }
 
@@ -85,17 +90,24 @@ export function PhotoMenu({
       </div>
 
       <p className="photo-menu-heading">Date stamp</p>
+      <label className="photo-menu-check">
+        <input type="checkbox" checked={showStamp} onChange={(e) => setShowStamp(e.target.checked)} />
+        Show the date stamp
+      </label>
       <input
         className="photo-menu-input"
+        aria-label="Date stamp text"
+        disabled={!showStamp}
         value={stamp}
         placeholder="e.g. '26 11 06"
         onChange={(e) => setStamp(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitText(); } }}
       />
 
-      <p className="photo-menu-heading">Caption</p>
+      <p className="photo-menu-heading">Caption{el.frame !== "print" ? " (Print frame only)" : ""}</p>
       <input
         className="photo-menu-input"
+        aria-label="Caption"
         value={caption}
         placeholder="Optional caption"
         onChange={(e) => setCaption(e.target.value)}

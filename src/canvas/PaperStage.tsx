@@ -624,7 +624,7 @@ export function PaperStage({ page, readOnly, notebookPath, active, onActivate, p
         const el = makeImage(rel, p.x, p.y, w, h, {
           frame: cfg.defaultPhotoFrame,
           filmLook: cfg.filmLook,
-          stamp: `'${yy} ${mm} ${dd}`,
+          stamp: cfg.dateStamp ? `'${yy} ${mm} ${dd}` : "",
         });
         editElements((els) => [...els, el]);
         useTools.getState().setTool("select");

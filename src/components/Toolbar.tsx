@@ -113,9 +113,16 @@ export function Toolbar() {
             key={v}
             className={`tb-swatch${same(general.inkColour, v) ? " on" : ""}`}
             aria-label={`${inkName(v)} ink`}
-            title={inkName(v)}
+            title={`${inkName(v)}. Right-click to unpin.`}
             aria-pressed={same(general.inkColour, v)}
             onClick={() => setGeneral({ inkColour: v })}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              void updateConfig((c) => ({
+                ...c,
+                general: { ...c.general, inkFavourites: c.general.inkFavourites.filter((f) => f !== v) },
+              }));
+            }}
           >
             <span style={{ background: v }} />
           </button>
