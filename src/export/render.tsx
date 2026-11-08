@@ -5,7 +5,7 @@ import { loadAsset } from "../canvas/assets";
 import { HandContext, type HandCtx } from "../canvas/HandContext";
 import { PageScene, type SceneContext } from "../canvas/PageScene";
 import { ThemeContext, printTheme, screenTheme } from "../canvas/theme";
-import { PAGE_HEIGHT, PAGE_WIDTH, type Page } from "../model/page";
+import { PAGE_HEIGHT, PAGE_WIDTH, createPage, type Page } from "../model/page";
 
 export type RenderOptions = {
   theme: "screen" | "print";
@@ -84,18 +84,19 @@ export async function renderSpreadPng(
   opts: RenderOptions,
 ): Promise<Uint8Array> {
   const a = await renderPageCanvas(left.page, left.ctx, opts);
-  const b = right ? await renderPageCanvas(right.page, right.ctx, opts) : null;
+  // A section that ends on a left page shows a blank ruled page opposite, as the book does.
+  const facing = right ?? {
+    page: { ...createPage(new Date(left.page.createdAt), "", left.page.section), id: `${left.page.id}-facing` },
+    ctx: { ...left.ctx, side: "r" as const, index: left.ctx.index + 1, otherTitle: left.page.title, pill: null, sheet: undefined },
+  };
+  const b = await renderPageCanvas(facing.page, facing.ctx, opts);
   const out = document.createElement("canvas");
   out.width = a.width * 2;
   out.height = a.height;
   const c = out.getContext("2d");
   if (!c) throw new Error("Could not draw the spread");
   c.drawImage(a, 0, 0);
-  if (b) c.drawImage(b, a.width, 0);
-  else {
-    c.fillStyle = opts.theme === "print" ? "#ffffff" : "#f3e8d0";
-    c.fillRect(a.width, 0, a.width, a.height);
-  }
+  c.drawImage(b, a.width, 0);
   // The crease where the pages meet.
   c.fillStyle = "rgba(90,60,30,0.25)";
   c.fillRect(a.width - opts.pixelRatio, 0, opts.pixelRatio * 2, a.height);

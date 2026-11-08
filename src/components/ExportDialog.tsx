@@ -228,7 +228,7 @@ function Dialog() {
                   disabled={format === "markdown"}
                   onChange={(e) => setPrinterFriendly(e.target.checked)}
                 />
-                Printer friendly PDF (white paper, light blue grid, dark ink)
+                Printer friendly PDF (white paper, faint rules)
               </label>
             </fieldset>
 
