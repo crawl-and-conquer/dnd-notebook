@@ -77,6 +77,7 @@ describe("changes made outside the app", () => {
           colour: "#2b2622",
           heading: false,
           font: "hand",
+          sticky: false,
         },
       ],
       updatedAt: "2026-11-06T10:00:00.000Z",

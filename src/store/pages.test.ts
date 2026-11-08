@@ -45,6 +45,8 @@ describe("page list actions", () => {
       fontSize: 16,
       colour: "#F4F7FF",
       heading: false,
+      font: "hand",
+      sticky: false,
     };
     useNotebook.getState().updatePageIn(charId, SECTION, pages[0].page.id, (p) => ({
       ...p,
