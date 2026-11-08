@@ -1,14 +1,12 @@
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useMemo } from "react";
-import { Group, Rect, Shape, Text } from "react-konva";
+import { Rect, Shape } from "react-konva";
 import { PAGE_HEIGHT, PAGE_WIDTH, type Element, type Page } from "../model/page";
-import { ElementNode, FONT_BODY, FONT_DISPLAY } from "./ElementNode";
+import type { Sheet, Trackers } from "../model/sheet";
+import { SheetTemplate } from "../sheet/SheetTemplate";
+import { ElementNode } from "./ElementNode";
 import { useCanvasTheme } from "./theme";
 
-export const TITLE_X = 60;
-export const TITLE_Y = 40;
-const TITLE_SIZE = 36;
-const SUBTITLE_SIZE = 14;
 export const HEADER_H = 88;
 export const RULE_STEP = 32;
 export const MARGIN_X1 = 71;
@@ -76,59 +74,98 @@ export function PaperBackground() {
   );
 }
 
-/**
- * The page title and "Page started" line, drawn in Konva for exports. On screen
- * the same text is an editable HTML input laid over the canvas at the same spot.
- */
-export function PageTitle({ page }: { page: Page }) {
+/** What a page needs to draw itself off screen as it looks in the book. */
+export type SceneContext = {
+  notebookPath: string;
+  side: "l" | "r";
+  /** Position in the section (0-based); the right page shows "p. index + 1". */
+  index: number;
+  /** The facing page's title, for a right page with no title of its own. */
+  otherTitle: string;
+  /** "Druid 3 · 40 HP" on a session's first page. */
+  pill: string | null;
+  sheet?: { sheet: Sheet; trackers: Trackers; name: string };
+};
+
+const ukDate = (iso: string) => {
+  try {
+    return format(parseISO(iso), "EEE d MMM yyyy");
+  } catch {
+    return iso;
+  }
+};
+
+/** The page header as the book shows it, drawn in Konva so exports match the screen. */
+export function PageHeaderScene({ page, ctx }: { page: Page; ctx: SceneContext }) {
   const t = useCanvasTheme();
   return (
-    <Group x={TITLE_X} y={TITLE_Y} listening={false}>
-      <Text
-        text={page.title}
-        fontFamily={FONT_DISPLAY}
-        fontStyle="600"
-        fontSize={TITLE_SIZE}
-        letterSpacing={-0.03 * TITLE_SIZE}
-        lineHeight={1.1}
-        fill={t.token("--ink-white")}
-        width={900}
-        wrap="none"
-        ellipsis
-      />
-      <Text
-        y={TITLE_SIZE * 1.1 + 8}
-        text={`Page started ${format(new Date(page.createdAt), "EEE d MMM yyyy")}`}
-        fontFamily={FONT_BODY}
-        fontSize={SUBTITLE_SIZE}
-        lineHeight={1.2}
-        fill={t.token("--text-muted")}
-      />
-    </Group>
+    <Shape
+      listening={false}
+      sceneFunc={(c) => {
+        const g = c._context;
+        g.save();
+        g.textBaseline = "alphabetic";
+        const meta = (text: string, x: number, y: number, align: CanvasTextAlign = "left") => {
+          g.font = `500 13px "Alegreya Sans"`;
+          g.fillStyle = t.token("--muted-on-paper");
+          g.textAlign = align;
+          g.fillText(text, x, y);
+        };
+        if (ctx.side === "r") {
+          meta(page.title || `${ctx.otherTitle}, cont.`, 92, 74);
+          meta(`p. ${ctx.index + 1}`, PAGE_WIDTH - 36, 74, "right");
+        } else {
+          g.font = `700 30px Alegreya`;
+          g.fillStyle = t.token("--ink-title");
+          g.fillText(page.title, 92, 52, PAGE_WIDTH - 92 - 36 - (ctx.pill ? 130 : 0));
+          meta(
+            page.session
+              ? [ukDate(page.session.date), page.session.place].filter(Boolean).join(" · ")
+              : `Started ${ukDate(page.createdAt)}`,
+            92,
+            76,
+          );
+          if (ctx.pill) {
+            g.font = `600 12px "Alegreya Sans"`;
+            const w = g.measureText(ctx.pill).width + 20;
+            const x = PAGE_WIDTH - 36 - w;
+            g.beginPath();
+            g.roundRect?.(x, 50, w, 26, 13);
+            g.fillStyle = "rgba(142,42,42,0.06)";
+            g.fill();
+            g.lineWidth = 1.5;
+            g.strokeStyle = "rgba(142,42,42,0.45)";
+            g.stroke();
+            g.fillStyle = "#7d2626";
+            g.textAlign = "left";
+            g.fillText(ctx.pill, x + 10, 67);
+          }
+        }
+        g.restore();
+      }}
+    />
   );
 }
 
-/** A whole page, read-only: what exports and snapshots draw. */
-export function PageScene({
-  page,
-  notebookPath,
-}: {
-  page: Page;
-  notebookPath: string;
-}) {
+/** A whole page, read-only, as the book shows it: what exports and snapshots draw. */
+export function PageScene({ page, ctx }: { page: Page; ctx: SceneContext }) {
   const ordered = useMemo(() => drawOrder(page.elements), [page.elements]);
   return (
     <>
       <PaperBackground />
-      <PageTitle page={page} />
-      {ordered.map((el) => (
-        <ElementNode
-          key={el.id}
-          el={el}
-          notebookPath={notebookPath}
-          draggable={false}
-          hidden={false}
+      {page.sheetPageType && ctx.sheet ? (
+        <SheetTemplate
+          type={page.sheetPageType}
+          index={page.sheetIndex ?? 0}
+          sheet={ctx.sheet.sheet}
+          trackers={ctx.sheet.trackers}
+          characterName={ctx.sheet.name}
         />
+      ) : (
+        <PageHeaderScene page={page} ctx={ctx} />
+      )}
+      {ordered.map((el) => (
+        <ElementNode key={el.id} el={el} notebookPath={ctx.notebookPath} draggable={false} hidden={false} />
       ))}
     </>
   );

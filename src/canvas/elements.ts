@@ -117,6 +117,7 @@ export function makeText(
     colour,
     heading,
     font,
+    sticky: false,
     ...stamp(),
   };
 }

@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { usePreviouslyOn } from "../ai/previouslyOn";
 import { PaperStage } from "../canvas/PaperStage";
 import { PAGE_HEIGHT, PAGE_WIDTH } from "../model/page";
 import { currentSpreadPages, useNotebook, type ShownPage } from "../store/notebook";
@@ -415,7 +416,40 @@ function PageHeader({
           )}
         </div>
       </div>
-      {pill && <span className="pill-ink">{pill}</span>}
+      <div className="phead-side">
+        {pill && <span className="pill-ink">{pill}</span>}
+        {sessions && session && !shown.virtual && !ro && (
+          <RecapButton characterId={characterId} sectionId={sectionId} pageId={page.id} />
+        )}
+      </div>
     </div>
+  );
+}
+
+/** SPEC M8: asks the AI for a recap of the last three sessions and sticks it on this page. */
+function RecapButton({ characterId, sectionId, pageId }: { characterId: string; sectionId: string; pageId: string }) {
+  const { phase, error, pageId: forPage, run, reset } = usePreviouslyOn();
+  const mine = forPage === pageId;
+  const busy = mine && phase === "running";
+  const label = busy ? "Writing the recap…" : mine && phase === "done" ? "Recap added" : "Previously on...";
+  return (
+    <span className="recap">
+      <button
+        className="recap-btn"
+        disabled={busy}
+        title="Sends the last three sessions' notes to your AI provider and writes a recap on a sticky note"
+        onClick={() => {
+          if (mine && phase === "error") reset();
+          void run(characterId, sectionId, pageId);
+        }}
+      >
+        {label}
+      </button>
+      {mine && phase === "error" && error && (
+        <span className="recap-error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }

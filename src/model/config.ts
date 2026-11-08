@@ -78,8 +78,6 @@ const AiSettingsSchema = z.object({
   /** Chosen model id per provider. */
   models: z.record(z.string(), z.string()).default({}),
   customBaseUrl: z.string().default(""),
-  lookAheadDays: z.number().default(14),
-  staleDays: z.number().default(21),
   includeSnapshots: z.boolean().default(false),
   temperature: z.number().min(0).max(2).default(0.3),
 });

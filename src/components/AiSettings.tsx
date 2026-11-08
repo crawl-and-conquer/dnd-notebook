@@ -4,11 +4,6 @@ import { AI_PROVIDERS, PROVIDER_LABEL, type AiProviderId, type AiSettings } from
 import { backend } from "../storage/backend";
 import { useNotebook } from "../store/notebook";
 
-const LOOK_AHEAD = [
-  { days: 7, label: "1 week" },
-  { days: 14, label: "2 weeks" },
-  { days: 31, label: "1 month" },
-];
 
 export function AiSection() {
   const ai = useNotebook((s) => s.config.ai);
@@ -35,8 +30,8 @@ export function AiSection() {
     <>
       <h3>AI</h3>
       <p className="lead">
-        Catch me up sends a summary of your notes to the provider you choose here. API keys are kept
-        in Windows Credential Manager, never in a file.
+        "Previously on..." on a Sessions spread sends your last three sessions to the provider you
+        choose here, only when you press it. API keys are kept in Windows Credential Manager, never in a file.
       </p>
 
       <div className="settings-grid">
@@ -83,32 +78,6 @@ export function AiSection() {
       <h3 className="sub">Options</h3>
       <div className="settings-grid">
         <label className="field">
-          Look-ahead window
-          <select
-            value={ai.lookAheadDays}
-            onChange={(e) => setAi({ lookAheadDays: Number(e.target.value) })}
-          >
-            {LOOK_AHEAD.map((o) => (
-              <option key={o.days} value={o.days}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          Stale page threshold (days)
-          <input
-            type="number"
-            min={7}
-            max={180}
-            value={ai.staleDays}
-            onChange={(e) => {
-              const n = Math.round(Number(e.target.value));
-              if (n >= 7 && n <= 180) setAi({ staleDays: n });
-            }}
-          />
-        </label>
-        <label className="field">
           Temperature: {ai.temperature.toFixed(1)}
           <input
             type="range"
@@ -131,16 +100,16 @@ export function AiSection() {
           <span>
             Include page snapshots
             <span className="hint">
-              Sends pictures of up to 5 recently edited pages, so handwriting and diagrams can be
-              read. Only used when the chosen model accepts images.
+              Also sends pictures of those sessions' spreads, so drawings and maps can be read. Only
+              used when the chosen model accepts images.
             </span>
           </span>
         </label>
       </div>
 
       <p className="disclosure-line">
-        Notes from included tabs are sent to {PROVIDER_LABEL[ai.provider]} when you use Catch me up.
-        Turn on Exclude from AI for a client in Clients and folders to keep its notes out.
+        Nothing is sent to {PROVIDER_LABEL[ai.provider]} unless you press "Previously on...". Turn on
+        Exclude from AI for a character in Characters and folders to keep their notes out.
       </p>
     </>
   );

@@ -68,6 +68,8 @@ const TextSchema = z.object({
   colour: z.string(),
   heading: z.boolean(),
   font: FontSchema,
+  /** Drawn on a taped sticky note (the "Previously on..." recap). */
+  sticky: z.boolean().default(false),
 });
 
 const ChecklistItemSchema = z.object({

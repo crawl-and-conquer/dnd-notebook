@@ -6,7 +6,7 @@ import { drawLaid, layoutText } from "../handwriting/handLayout";
 import { useAsset } from "./assets";
 import { strokePath } from "./elements";
 import { DEFAULT_HAND_STYLE, useFontsVersion, useHand } from "./HandContext";
-import { HandText } from "./HandText";
+import { HandText, useLaidHeight } from "./HandText";
 import { cssVar, useCanvasTheme } from "./theme";
 
 /** Reads a design token (CSS variable) so canvas colours match the chrome. */
@@ -155,25 +155,73 @@ function Body({ el, notebookPath, onToggleItem }: Props) {
           perfectDrawEnabled={false}
         />
       );
-    case "text":
+    case "text": {
+      const spec = {
+        text: el.text,
+        width: el.w,
+        fontSize: el.fontSize,
+        font: el.font,
+        heading: el.heading,
+        elementId: el.id,
+      };
+      const text = <HandText spec={spec} colour={t.ink(el.colour)} />;
+      if (!el.sticky) return text;
       return (
-        <HandText
-          spec={{
-            text: el.text,
-            width: el.w,
-            fontSize: el.fontSize,
-            font: el.font,
-            heading: el.heading,
-            elementId: el.id,
-          }}
-          colour={t.ink(el.colour)}
-        />
+        <>
+          <StickyBack spec={spec} />
+          {text}
+        </>
       );
+    }
     case "checklist":
       return <ChecklistBody el={el} onToggleItem={onToggleItem} />;
     case "image":
       return <ImageBody el={el} notebookPath={notebookPath} />;
   }
+}
+
+/** Padding between a sticky note's edge and its writing. */
+export const STICKY_PAD = 14;
+
+/** A sticky note behind a text element: yellow paper, a soft shadow and a strip of tape. */
+function StickyBack({ spec }: { spec: Parameters<typeof useLaidHeight>[0] }) {
+  const t = useCanvasTheme();
+  const h = useLaidHeight(spec);
+  const w = spec.width + STICKY_PAD * 2;
+  const total = h + STICKY_PAD * 2;
+  return (
+    <Shape
+      x={-STICKY_PAD}
+      y={-STICKY_PAD}
+      listening={false}
+      perfectDrawEnabled={false}
+      sceneFunc={(ctx) => {
+        const c = ctx._context;
+        c.save();
+        if (t.name === "screen") {
+          c.shadowColor = t.token("--sticky-note-shadow");
+          c.shadowBlur = 8;
+          c.shadowOffsetY = 3;
+        }
+        c.fillStyle = t.token("--sticky-note");
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.lineTo(w, 1);
+        c.lineTo(w - 1, total);
+        c.lineTo(1, total - 1);
+        c.closePath();
+        c.fill();
+        c.restore();
+        // Tape across the top edge.
+        c.save();
+        c.translate(w / 2, 0);
+        c.rotate(-0.04);
+        c.fillStyle = t.token("--tape");
+        c.fillRect(-36, -9, 72, 18);
+        c.restore();
+      }}
+    />
+  );
 }
 
 /** A hand-drawn checkbox: uneven corners, tilted a little, with a tick when done. */

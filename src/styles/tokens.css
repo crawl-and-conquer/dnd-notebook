@@ -68,12 +68,15 @@
   --photo-shadow: rgba(50, 30, 10, 0.28);
   --photo-caption: #5a4636;
   --tape: rgba(238, 226, 192, 0.72);
+  --sticky-note: #f3dc8c;
+  --sticky-note-shadow: rgba(60, 40, 10, 0.22);
   --stamp: #ff9b4d;
   --stamp-glow: rgba(255, 110, 30, 0.95);
   --edge-print: #ff9b4d;
 
   /* Printer-friendly export: white paper, rules and margins at half strength, inks unchanged */
   --print-paper: #ffffff;
+  --print-sticky-note: #fbf3d0;
   --print-paper-highlight: rgba(255, 255, 255, 0);
   --print-rule: rgba(201, 96, 84, 0.15);
   --print-margin-line: rgba(201, 74, 62, 0.28);

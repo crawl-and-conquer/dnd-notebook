@@ -5,7 +5,7 @@ import { pageToMarkdown } from "./markdown";
 import { safeName, uniqueNamer } from "./names";
 import {
   A4_LANDSCAPE,
-  addNotebookPage,
+  addSpreadPage,
   contentsPageCount,
   imageBox,
   insertContents,
@@ -101,8 +101,9 @@ const page: Page = {
 };
 
 const opts = {
-  tabName: "Grade A Technology",
-  fileBase: "2026-10-28-faceted-navigation-audit",
+  character: "Cosworth",
+  section: "Sessions",
+  snapshot: "assets/0001-session-1-spread.png",
   includeImages: true,
   includeDone: true,
 };
@@ -113,15 +114,18 @@ describe("Markdown export", () => {
   it("starts with front matter", () => {
     expect(
       markdown.startsWith(
-        '---\ntitle: "Faceted navigation audit"\ntab: "Grade A Technology"\ncreated: 2026-10-28T09:15:00.000Z\nupdated: 2026-11-04T10:00:00.000Z\n---\n',
+        '---\ncharacter: "Cosworth"\nsection: "Sessions"\npage: "Faceted navigation audit"\ncreated: 2026-10-28T09:15:00.000Z\nupdated: 2026-11-04T10:00:00.000Z\n---\n',
       ),
     ).toBe(true);
   });
 
-  it("puts the page snapshot first", () => {
+  it("puts the spread snapshot first", () => {
     const body = markdown.split("---\n")[2];
     expect(
-      body.indexOf("![Page snapshot](assets/2026-10-28-faceted-navigation-audit-snapshot.png)"),
+      body.indexOf("![Spread](assets/0001-session-1-spread.png)"),
+    ).toBeGreaterThan(-1);
+    expect(
+      body.indexOf("![Spread](assets/0001-session-1-spread.png)"),
     ).toBeLessThan(body.indexOf("Filter URLs"));
   });
 
@@ -129,7 +133,7 @@ describe("Markdown export", () => {
     const order = [
       "Filter URLs",
       "Category page",
-      "![Image](assets/abc.png)",
+      "![Photo](assets/abc.png)",
       "## Next steps",
       "- [x] Pull facet URLs",
       "- [ ] Brief dev",
@@ -148,7 +152,7 @@ describe("Markdown export", () => {
   });
 
   it("can leave out images and done items", () => {
-    const r = pageToMarkdown(page, { ...opts, includeImages: false, includeDone: false });
+    const r = pageToMarkdown(page, { ...opts, snapshot: null, includeImages: false, includeDone: false });
     expect(r.markdown).not.toContain("![");
     expect(r.markdown).not.toContain("Pull facet URLs");
     expect(r.assets).toEqual([]);
@@ -183,22 +187,22 @@ const PNG = Uint8Array.from(
 const colours = { background: "#0C1332", text: "#E9EDFD", muted: "#B9C6E6" };
 
 describe("PDF export", () => {
-  it("fits the 570x720 sheet inside portrait A4 with room for header and footer", () => {
+  it("fits a 1140x720 spread inside landscape A4 with room for header and footer", () => {
     const b = imageBox();
-    expect(b.w / b.h).toBeCloseTo(570 / 720, 5);
+    expect(b.w / b.h).toBeCloseTo(1140 / 720, 5);
     expect(b.x).toBeGreaterThanOrEqual(24);
     expect(b.y).toBeGreaterThanOrEqual(26);
     expect(b.y + b.h).toBeLessThanOrEqual(A4_LANDSCAPE[1] - 30);
   });
 
   it("builds landscape A4 pages and a contents page in front", async () => {
-    const { doc, fonts } = await newPdf("Grade A Technology");
+    const { doc, fonts } = await newPdf("Cosworth");
     for (let i = 0; i < 3; i++) {
-      await addNotebookPage(
+      await addSpreadPage(
         doc,
         fonts,
         PNG,
-        { tabName: "Grade A", pageTitle: `Page ${i}`, created: "Wed 28 Oct 2026" },
+        { character: "Cosworth", section: "Sessions", title: `Page ${i}`, date: "Wed 28 Oct 2026" },
         colours,
         i + 2,
         4,
@@ -208,7 +212,7 @@ describe("PDF export", () => {
       doc,
       fonts,
       colours,
-      "Grade A",
+      "Cosworth",
       "Exported",
       [1, 2, 3].map((n) => ({ title: `Page ${n}`, created: "x", pageNumber: n + 1 })),
       4,

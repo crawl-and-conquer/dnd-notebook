@@ -97,6 +97,7 @@ const fullPage: Page = {
       colour: "#F4F7FF",
       heading: false,
       font: "hand",
+      sticky: false,
       x: 60,
       y: 140,
       rotation: 0,

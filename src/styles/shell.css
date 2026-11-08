@@ -580,6 +580,57 @@
   flex: none;
 }
 
+/* Pill and the "Previously on..." button, stacked at the right of a session's first page. */
+.phead-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex: none;
+}
+.recap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.recap-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px dashed var(--pill-line);
+  background: transparent;
+  color: var(--muted-on-paper);
+  font: 600 12px var(--font-body);
+  font-style: italic;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.recap-btn:hover:not(:disabled) {
+  color: var(--oxblood-ink);
+  background: var(--pill-wash);
+}
+.recap-btn:disabled {
+  cursor: progress;
+}
+.recap-btn:focus-visible {
+  outline: 2px solid var(--label);
+  outline-offset: 2px;
+}
+.recap-error {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 240px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: 500 12px/1.35 var(--font-body);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  z-index: 3;
+}
+
 .sheet-overlay {
   position: absolute;
   inset: 0;
